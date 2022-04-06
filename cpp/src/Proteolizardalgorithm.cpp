@@ -1,9 +1,11 @@
 #include <vector>
 #include <tuple>
 
-#include <pybind11/stl.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <pybind11/numpy.h>
+#include <pybind11/eigen.h>
+#include <pybind11/operators.h>
 #include "Hashing.h"
 #include "Spectrum.h"
 #include "Frame.h"
