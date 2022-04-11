@@ -76,8 +76,8 @@ dh = PyTimsDataHandle('/path/to/data.d')
 frame = dh.get_frame(dh.precursor_frames[250])
 
 # create a set of dense windows indexed by scan and mz-bin
-scan, mz_bin, W = frame.get_dense_windows(window_length=4, resolution=2, min_peaks=5, min_intensity=50, 
-                                          overlapping=True)
+scan, mz_bin, W = frame.get_dense_windows(window_length=4, resolution=2, min_peaks=5, 
+                                          min_intensity=50, overlapping=True)
 
 # create a spectrum hasher
 # by picking a fixed seed, you can guarantee that keys can be reproduced
@@ -89,7 +89,7 @@ K = hasher.calculate_keys(W)
 print(K)
 ```
 This will give you:
-```
+```python
 <tf.Tensor: shape=(10682, 512), dtype=int32, numpy=
 array([[ 362167, 3700797, 3061941, ..., 1147456, 1968934,   98534],
        [2538463, 3497250, 2595794, ..., 2643667, 2048648, 3815282],
