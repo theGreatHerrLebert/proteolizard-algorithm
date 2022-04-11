@@ -68,8 +68,10 @@ Wang et al.[^fn2][^fn3]
 ```python
 import numpy as np
 import tensorflow as tf
-from proteolizarddata.data import PyTimsDataHandle, TimsFrame
-from proteolizardalgo.hasing import TimsHasher, IsotopeReferenceSearch
+
+from proteolizarddata.data import PyTimsDataHandle, TimsFrame, MzSpectrum
+from proteolizardalgo.hashing import TimsHasher, IsotopeReferenceSearch, ReferencePattern
+from proteolizardalgo.utility import create_reference_dict, get_refspec_list, get_ref_pattern_as_spectra
 
 # create a data handle and read a precursor frame
 dh = PyTimsDataHandle('/path/to/data.d')
@@ -108,7 +110,7 @@ DUMMY
 
 ---
 ### Supervised (Deep) Learning
-DUMMY
+Zohora et al.[^fn4][^fn5]
 
 ---
 [^fn1]: Locality-sensitive hashing enables signal classification in high-throughput mass spectrometry raw data at scale. 
@@ -117,3 +119,7 @@ bioRxiv 2021. https://doi.org/10.1101/2021.07.01.450702
 Proteomics, 2020.  https://doi.org/10.1002/pmic.202000002
 [^fn3]: msCRUSH: Fast Tandem Mass Spectral Clustering Using Locality Sensitive Hashing
 journal of proteome, 2019. https://pubs.acs.org/doi/10.1021/acs.jproteome.8b00448
+[^fn4]: DeepIso: A Deep Learning Model for Peptide Feature Detection from LC-MS map.
+Nature scientific reports, 2019. https://doi.org/10.1038/s41598-019-52954-4
+[^fn5]: Deep neural network for detecting arbitrary precision peptide features through attention based segmentation.
+Nature scientific reports, 2021. https://doi.org/10.1038/s41598-021-97669-7
