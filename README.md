@@ -45,7 +45,25 @@ Right now, it's buggy and hard.
 
 ---
 ### Locality Sensitive Hashing (LSH)
-DUMMY
+LSH is a stochastic technique to find similar objects, where similarity is estimated using a family of hash functions 
+that are tailored to approximate some similarity measure. One of its main advantages over other algorithms is the fact
+that similar pairs can be found in linear time, trading a guarantee to find all similar objects against high
+probability of detection.
+
+`proteolizard-algorithm` implements approximation of cosine similarity of mass spectra. To do so, it allows you to
+generate a set of keys for mz spectra in a vectorized representation. This keys can then be used for detection of 
+self-collision, reference search or generally anything related to distance matrices like clustering. Key calculation
+is based on [`tensorflow`](https://www.tensorflow.org/) Tensors and can therefore be put onto the GPU if you have a 
+[CUDA](https://developer.nvidia.com/cuda-toolkit) enabled NVIDIA card and 
+[cuDNN](https://developer.nvidia.com/cudnn) is available in your environment. 
+To learn more about LSH in context of mass spectrometry, have a look at Bob et al.[^fn1] or Wang et al.[^fn2]
+
+```python
+import numpy as np
+import tensorflow as tf
+from proteolizarddata.data import PyTimsDataHandle, TimsFrame
+from proteolizardalgo.hasing import TimsHasher, IsotopeReferenceSearch
+```
 
 ---
 ### Clustering
@@ -54,3 +72,9 @@ DUMMY
 ---
 ### Supervised (Deep) Learning
 DUMMY
+
+---
+[^fn1]: Locality-sensitive hashing enables signal classification in high-throughput mass spectrometry raw data at scale. 
+bioRxiv 2021. https://doi.org/10.1101/2021.07.01.450702 
+[^fn2]: A Fast and Memory-Efficient Spectral Library Search Algorithm Using Locality-Sensitive Hashing. 
+Proteomics, 2020.  https://doi.org/10.1002/pmic.202000002
