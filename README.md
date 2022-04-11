@@ -56,14 +56,51 @@ self-collision, reference search or generally anything related to distance matri
 is based on [`tensorflow`](https://www.tensorflow.org/) Tensors and can therefore be put onto the GPU if you have a 
 [CUDA](https://developer.nvidia.com/cuda-toolkit) enabled NVIDIA card and 
 [cuDNN](https://developer.nvidia.com/cudnn) is available in your environment. 
-To learn more about LSH in context of mass spectrometry, have a look at Bob et al.[^fn1] or Wang et al.[^fn2][^fn3]
+
+We will briefly go over how LSH is performed for timsTOF data.
+
+**TODO**: explain and show workflow plot.
+
+If you want to learn more about LSH in context of mass spectrometry, have a look at 
+Bob et al.[^fn1] or 
+Wang et al.[^fn2][^fn3]
 
 ```python
 import numpy as np
 import tensorflow as tf
 from proteolizarddata.data import PyTimsDataHandle, TimsFrame
 from proteolizardalgo.hasing import TimsHasher, IsotopeReferenceSearch
+
+# create a data handle and read a precursor frame
+dh = PyTimsDataHandle('/path/to/data.d')
+frame = dh.get_frame(dh.precursor_frames[250])
+
+# create a set of dense windows indexed by scan and mz-bin
+scan, mz_bin, W = frame.get_dense_windows(window_length=4, resolution=2, min_peaks=5, min_intensity=50, 
+                                          overlapping=True)
+
+# create a spectrum hasher
+# by picking a fixed seed, you can guarantee that keys can be reproduced
+hasher = TimsHasher(trials=256, len_trial=22, seed=42, num_dalton=4, resolution=2)
+
+# calculate trials number of keys, each having len_tral bits for each window
+K = hasher.calculate_keys(W)
+
+print(K)
 ```
+This will give you:
+```
+<tf.Tensor: shape=(10682, 512), dtype=int32, numpy=
+array([[ 362167, 3700797, 3061941, ..., 1147456, 1968934,   98534],
+       [2538463, 3497250, 2595794, ..., 2643667, 2048648, 3815282],
+       [2003423, 3821990, 2528830, ..., 1697390, 1763353, 1735530],
+       ...,
+       [2898374, 1166177, 1438584, ..., 2115578,  769518,  448939],
+       [1382299, 3202454, 3824606, ..., 2843920, 1615614, 3689973],
+       [ 877019, 3258715, 4001803, ..., 1603336, 2742681, 2790119]],
+      dtype=int32)>
+```
+where shape = (number_windows, number_keys_per_window).
 
 ---
 ### Clustering
