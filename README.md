@@ -56,7 +56,7 @@ self-collision, reference search or generally anything related to distance matri
 is based on [`tensorflow`](https://www.tensorflow.org/) Tensors and can therefore be put onto the GPU if you have a 
 [CUDA](https://developer.nvidia.com/cuda-toolkit) enabled NVIDIA card and 
 [cuDNN](https://developer.nvidia.com/cudnn) is available in your environment. 
-To learn more about LSH in context of mass spectrometry, have a look at Bob et al.[^fn1] or Wang et al.[^fn2]
+To learn more about LSH in context of mass spectrometry, have a look at Bob et al.[^fn1] or Wang et al.[^fn2][^fn3]
 
 ```python
 import numpy as np
@@ -78,3 +78,5 @@ DUMMY
 bioRxiv 2021. https://doi.org/10.1101/2021.07.01.450702 
 [^fn2]: A Fast and Memory-Efficient Spectral Library Search Algorithm Using Locality-Sensitive Hashing. 
 Proteomics, 2020.  https://doi.org/10.1002/pmic.202000002
+[^fn3]: msCRUSH: Fast Tandem Mass Spectral Clustering Using Locality Sensitive Hashing
+journal of proteome, 2019. https://pubs.acs.org/doi/10.1021/acs.jproteome.8b00448
