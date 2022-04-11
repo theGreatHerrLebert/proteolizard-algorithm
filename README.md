@@ -30,8 +30,8 @@ The additional recording of ion-mobility adds another dimension to experiments w
 data-sparsity increases as well. This makes a lot of traditional approaches used for LC-MS-MS processing either 
 too slow or their design unsuited for these datasets. 
 
-Our goal is to translate ideas developed in other disciplines in data science that have to deal with related problems 
-We especially want to make use of modern hardware such as multi-core/multi-threading and GPU parallelization. 
+Our goal is to translate ideas developed in other disciplines in data science that have to deal with related problems.
+We especially want to make use of modern hardware such as multicore systems and GPU parallelization. 
 
 ## Navigation
 * [**Build and install proteolizard-algorithm**](#build-and-install-proteolizard-algorithm)
