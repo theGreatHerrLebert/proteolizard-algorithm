@@ -14,7 +14,7 @@ This means that
 * **visualization**: [`proteolizard-vis`](https://github.com/theGreatHerrLebert/proteolizard-vis) 
 
 are made available at different repositories. This makes it easier for us to develop all pieces independently.
-We are aiming at keeping dependencies as small as possible, which should allow you to exchange e.g. parts of your 
+We try to keep dependencies as small as possible, which should allow you to exchange parts of your 
 custom pipelines against other data-access backends such as 
 [`timspy`](https://github.com/MatteoLacki/timspy) or 
 [`alphatims`](https://github.com/MannLabs/alphatims).
