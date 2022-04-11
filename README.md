@@ -1,5 +1,5 @@
 # proteolizard-algorithm
-### A collection of algorithms and tooling to process timsTOF ion-mobility mass-spectrometry raw-data
+### A collection of algorithms and tooling to process ion-mobility mass-spectrometry raw-data
 
 ## Context
 This repository is part of the `proteolizard` project, which revolves around a free and open-source solution 
