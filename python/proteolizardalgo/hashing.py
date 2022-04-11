@@ -268,7 +268,7 @@ class IsotopeReferenceSearch:
         :return:
         """
 
-        s, b, F = frame.hashing_block_as_dense_tensor(
+        s, b, F = frame.get_dense_windows(
             window_length=self.hasher.num_dalton,
             resolution=self.hasher.resolution,
             min_intensity=min_intensity,
