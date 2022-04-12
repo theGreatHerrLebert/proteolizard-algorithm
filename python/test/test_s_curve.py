@@ -3,9 +3,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 from scipy.stats import binom
 from tqdm import tqdm
 
-from pyproteolizardalgorithm.hashing import TimsHasher
+from proteolizardalgo.hashing import TimsHasher
 
 np.random.seed(0)
+
 
 def get_signal_noise(sigma, n_windows, n_bins):
     # generate F and F_prime

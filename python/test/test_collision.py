@@ -1,4 +1,4 @@
-from pyproteolizardalgorithm.hashing import TimsHasher
+from proteolizardalgo.hashing import TimsHasher
 import numpy as np
 
 hasher = TimsHasher(32, 32, 15, 2, 10)
