@@ -116,7 +116,7 @@ Zohora et al.[^fn4][^fn5]
 bioRxiv 2021. https://doi.org/10.1101/2021.07.01.450702 
 
 [^fn2]: A Fast and Memory-Efficient Spectral Library Search Algorithm Using Locality-Sensitive Hashing. 
-Proteomics, 2020.  https://doi.org/10.1002/pmic.202000002
+Proteomics, 2020. https://doi.org/10.1002/pmic.202000002
 
 [^fn3]: msCRUSH: Fast Tandem Mass Spectral Clustering Using Locality Sensitive Hashing.
 journal of proteome, 2019. https://pubs.acs.org/doi/10.1021/acs.jproteome.8b00448
