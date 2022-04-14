@@ -259,12 +259,15 @@ class IsotopeReferenceSearch:
 
         return M[argmax_sim], max_sim, monoisotopic_mass, charge_state
 
-    def find_isotope_patterns(self, frame: TimsFrame, min_intensity=100, min_peaks=5, overlapping=True):
+    def find_isotope_patterns(self, frame: TimsFrame, min_intensity=100, min_peaks=5, overlapping=True,
+                              window_length=4, min_cosim=0.6):
         """
         :param frame:
         :param min_intensity:
         :param min_peaks:
         :param overlapping:
+        :param window_length:
+        :param min_cosim:
         :return:
         """
 
@@ -281,7 +284,8 @@ class IsotopeReferenceSearch:
         r_list = []
 
         for scan, mz_bin, keys, vectors in zip(s, b, WK, F):
-            r_list.append(self.calculate_window_collision(scan, np.abs(mz_bin), keys, vectors))
+            r_list.append(self.calculate_window_collision(scan, mz_bin, keys, vectors, window_length=window_length,
+                                                          min_cosim=min_cosim))
 
         A = np.hstack([np.expand_dims(s, axis=1), np.expand_dims(b, axis=1), np.array(r_list)])
         patterns = pd.DataFrame(A[A[:, 4] != -1], columns=['scan', 'bin', 'cosim', 'mz_mono', 'charge'])
@@ -309,7 +313,20 @@ class IsotopeReferenceSearch:
 
         return patterns
 
-    def calculate_window_collision(self, scan, mz_bin, keys, dense_vector, min_cosim=0.6):
+    def calculate_window_collision(self, scan, mz_bin, keys, dense_vector, window_length=4, min_cosim: float = 0.6):
+        """
+
+        :param scan:
+        :param mz_bin:
+        :param keys:
+        :param dense_vector:
+        :param window_length:
+        :param min_cosim:
+        :return:
+        """
+
+        is_overlapping = int(((np.sign(mz_bin) - 1) / - 2))
+        mz_bin = np.abs(mz_bin)
 
         if mz_bin in self.key_dict:
 
@@ -324,7 +341,7 @@ class IsotopeReferenceSearch:
 
                 argmax_cosim = np.argmax(real_cosim)
                 max_cosim = np.round(real_cosim[argmax_cosim][0], 2)
-                max_m_c = m_c[argmax_cosim]
+                max_m_c = m_c[argmax_cosim] - is_overlapping * (window_length / 2)
                 max_c_c = c_c[argmax_cosim]
 
                 if max_cosim > min_cosim:
