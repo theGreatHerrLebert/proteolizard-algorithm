@@ -90,6 +90,40 @@ class TimsHasher:
         """
         return self.hash_ptr.calculateCollisions(H, s, b)
 
+    def filter_frame_auto_correlation(self, frame, min_intensity=1, overlapping=True):
+        """
+
+        :param frame:
+        :param min_intensity:
+        :param overlapping:
+        :return:
+        """
+        s, b, W = frame.get_dense_windows(window_length=self.num_dalton, resolution=self.resolution,
+                                          overlapping=overlapping, min_intensity=min_intensity)
+
+        K = self.calculate_keys(W)
+        mz_bins, scans = self.calculate_collisions(K, s, b)
+
+        as_frame = frame.data()
+        as_frame['bin'] = np.floor(as_frame['mz'] / self.num_dalton)
+        as_frame['bin_overlapping'] = -np.floor((as_frame['mz'] + self.num_dalton / 2) / self.num_dalton)
+
+        keep = pd.DataFrame({'mz_bin': mz_bins, 'scan': scans})
+
+        non_overlapping = pd.merge(left=as_frame, right=keep, left_on=['scan', 'bin'], right_on=['scan', 'mz_bin'])
+        overlapping = pd.merge(left=as_frame, right=keep, left_on=['bin_overlapping', 'scan'],
+                               right_on=['mz_bin', 'scan'])
+
+        f = pd.concat([non_overlapping,
+                       overlapping]).drop_duplicates(['scan', 'mz'])[['frame', 'scan', 'mz', 'intensity']]
+
+        filtered_frame = TimsFrame(None, f['frame'].values[0], f.scan.values, f.mz.values,
+                                   f.intensity.values,
+                                   np.zeros_like(f.mz.values).astype(np.int32),
+                                   np.zeros_like(f.mz.values).astype(np.float32))
+
+        return filtered_frame
+
 
 class ReferencePattern:
     """
