@@ -90,16 +90,17 @@ class TimsHasher:
         """
         return self.hash_ptr.calculateCollisions(H, s, b)
 
-    def filter_frame_auto_correlation(self, frame, min_intensity=1, overlapping=True):
+    def filter_frame_auto_correlation(self, frame, min_intensity=1, overlapping=True, min_peaks=6):
         """
 
+        :param min_peaks:
         :param frame:
         :param min_intensity:
         :param overlapping:
         :return:
         """
         s, b, W = frame.get_dense_windows(window_length=self.num_dalton, resolution=self.resolution,
-                                          overlapping=overlapping, min_intensity=min_intensity)
+                                          overlapping=overlapping, min_intensity=min_intensity, min_peaks=min_peaks)
 
         K = self.calculate_keys(W)
         mz_bins, scans = self.calculate_collisions(K, s, b)
