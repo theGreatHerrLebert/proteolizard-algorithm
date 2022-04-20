@@ -83,7 +83,7 @@ def test_s_curve():
     ors = 128
     ands = 31
 
-    seed = 1354656
+    seed = 42 #1354656
 
     # Action
     dict_values = {}

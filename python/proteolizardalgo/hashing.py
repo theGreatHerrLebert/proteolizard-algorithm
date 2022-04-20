@@ -22,6 +22,9 @@ class TimsHasher:
     """
     def __init__(self, trials, len_trial, seed=5671, resolution=1, num_dalton=10):
 
+        assert 0 < trials, f'trials variable needs to be greater then 1, was: {trials}'
+        assert 0 < len_trial, f'length trial variable needs to be greater then 1, was: {trials}'
+
         # check
         if 0 < len_trial <= 32:
             self.V = tf.constant(
