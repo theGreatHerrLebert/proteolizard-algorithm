@@ -3,7 +3,7 @@
 
 This repository is part of the `proteolizard` project, a free and open-source solution 
 for raw-data access, algorithms and raw-data visualization of mass spectrometry data generated with 
-brukers timsTOF device.
+the bruker timsTOF device.
 
 We are a relatively small team of developers and therefore decided to keep things loosely coupled. 
 This means that 
