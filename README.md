@@ -8,8 +8,8 @@ the bruker timsTOF device.
 We are a relatively small team of developers and therefore decided to keep things loosely coupled. 
 This means that 
 
-* **data access**: [`proteolizard-data`](https://github.com/theGreatHerrLebert/proteolizard-data)
-* **algorithms**: [`proteolizard-algorithm`](https://github.com/theGreatHerrLebert/proteolizard-algorithm) 
+* **data access**  : [`proteolizard-data`](https://github.com/theGreatHerrLebert/proteolizard-data)
+* **algorithms**   : [`proteolizard-algorithm`](https://github.com/theGreatHerrLebert/proteolizard-algorithm) 
 * **visualization**: [`proteolizard-vis`](https://github.com/theGreatHerrLebert/proteolizard-vis) 
 
 are made available at different repositories. 
