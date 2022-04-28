@@ -8,12 +8,13 @@
 #define assertm(exp, msg) assert(((void)msg, exp))
 
 #include <random>
-#include "Eigen/Dense"
-#include "Eigen/Sparse"
-#include "Frame.h"
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
+#include <ProteoLizardData/Frame.h>
 #include <cmath>
 #include <algorithm>
 #include <execution>
+#include <set>
 
 // helper to check for self collision of windows
 struct CollisionBox{
