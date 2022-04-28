@@ -16,7 +16,6 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
 find_package(ProteoLizardData REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(Python3 REQUIRED COMPONENTS Development Interpreter)
 find_package(pybind11 REQUIRED)
 
 include_directories(${ProteoLizardData_INCLUDE_DIRS})
@@ -25,6 +24,7 @@ include_directories(${pybind11_INCLUDE_DIRS})
 include_directories(${Python3_INCLUDE_DIRS})
 
 add_library(proteolizardalgorithm SHARED
+    src/Hashing.cpp
     src/Proteolizardalgorithm.cpp
 )
 set(ProteoLizardAlgorithm_HEADER_FILES
@@ -32,4 +32,8 @@ set(ProteoLizardAlgorithm_HEADER_FILES
 )
 set_target_properties(proteolizardalgorithm PROPERTIES PUBLIC_HEADER "${ProteoLizardAlgorithm_HEADER_FILES}")
 
-target_link_libraries(proteolizardalgorithm PUBLIC ProteoLizard::proteolizarddata)
+target_link_libraries(proteolizardalgorithm
+    PUBLIC
+        ProteoLizard::proteolizarddata
+        Eigen3::Eigen
+)
