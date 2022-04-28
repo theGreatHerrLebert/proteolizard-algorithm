@@ -37,3 +37,26 @@ target_link_libraries(proteolizardalgorithm
         ProteoLizard::proteolizarddata
         Eigen3::Eigen
 )
+
+include(GNUInstallDirs)
+install(TARGETS proteolizardalgorithm
+    EXPORT                    ProteoLizardAlgorithmTargets
+    LIBRARY DESTINATION       ${CMAKE_INSTALL_LIBDIR}
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ProteoLizardAlgorithm
+)
+
+install(EXPORT ProteoLizardAlgorithmTargets
+    FILE        ProteoLizardAlgorithmTargets.cmake
+    NAMESPACE   ProteoLizard::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ProteoLizardAlgorithm
+)
+
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file("ProteoLizardAlgorithmConfigVersion.cmake"
+    VERSION       ${ProteoLizardAlgorithm_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+install(FILES "cmake/ProteoLizardAlgorithmConfig.cmake" "${CMAKE_BINARY_DIR}/ProteoLizardAlgorithmConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ProteoLizardAlgorithm
+)

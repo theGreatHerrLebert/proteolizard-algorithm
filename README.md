@@ -46,6 +46,20 @@ We highly recommend to install all libraries that are part of the `proteolizard`
 
 To use `proteolizatd-algorithm`, you will need to install [`proteolizard-data`](https://github.com/theGreatHerrLebert/proteolizard-data) first. After that, build the C++ shared library for python:
 
+```sh
+shell> git clone https://github.com/theGreatHerrLebert/proteolizard-algorithm
+shell> cd proteolizard-algorithm
+```
+
+```sh
+shell> mkdir build && cd build
+shell> cmake ../cpp -DCMAKE_BUILD_TYPE=Release
+shell> make
+```
+
+```sh
+shell> cmake --install . --prefix=some/prefix/path
+```
 ---
 ### Locality Sensitive Hashing (LSH)
 LSH is a stochastic technique to find similar objects, where similarity is estimated using a family of hash functions 
