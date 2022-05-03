@@ -335,7 +335,7 @@ class IsotopeReferenceSearch:
 
         patterns['id'] = np.arange(patterns.shape[0])
 
-        overlapping_false = patterns[patterns.overlapping == False]
+        overlapping_false = patterns[patterns.overlapping==False]
         overlapping_true = patterns[patterns.overlapping]
 
         overlap_duplicates = pd.merge(left=overlapping_false, right=overlapping_true,
