@@ -72,7 +72,7 @@ def cluster_precursors_hdbscan(precursor_points,
     :param leaf_size:
     :param min_cluster_size:
     :param p:
-    :param experiment_slice: a MidiaSlice that must contain precursor data
+    :param experiment_slice: a Slice that must contain precursor data
     :param min_samples: DBSCAN min_samples
     :param metric: DBSCAN metric
     :param cycle_scaling: a scale factor for rt, will be calculated as index / 2^cycle_scaling
