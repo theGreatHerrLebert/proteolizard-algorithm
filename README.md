@@ -61,6 +61,14 @@ shell> cmake ../cpp -DCMAKE_BUILD_TYPE=Release
 shell> make
 ```
 
+Or, if you did not install `proteolizard-data` into a global install directory, you also need to set CMAKE_PREFIX_PATH to the same installation prefix used for proteolizard-data:
+
+```sh
+shell> mkdir build && cd build
+shell> cmake ../cpp -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=path/to/proteolizard-data/install
+shell> make
+```
+
 ```sh
 shell> cmake --install . --prefix=some/prefix/path
 ```
