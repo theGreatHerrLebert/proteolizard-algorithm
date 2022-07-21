@@ -143,7 +143,7 @@ Zohora et al.[^fn4][^fn5]
 
 ---
 [^fn1]: Locality-sensitive hashing enables efficient and scalable signal classification in high-throughput mass spectrometry raw data.
-bioRxiv 2021. https://doi.org/10.1101/2021.07.01.450702
+BMC Bioinformatics, 2021. https://doi.org/10.1186/s12859-022-04833-5
 
 [^fn2]: A Fast and Memory-Efficient Spectral Library Search Algorithm Using Locality-Sensitive Hashing. 
 Proteomics, 2020. https://doi.org/10.1002/pmic.202000002
