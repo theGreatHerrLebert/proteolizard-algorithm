@@ -9,6 +9,7 @@ find_package_handle_standard_args(ProteoLizardAlgorithm DEFAULT_MSG ProteoLizard
 
 include(CMakeFindDependencyMacro)
 find_dependency(Eigen3 REQUIRED)
+find_dependency(ProteoLizardData REQUIRED)
 
 if(ProteoLizardAlgorithm_FOUND)
     set(ProteoLizardAlgorithm_INCLUDE_DIRS ${ProteoLizardAlgorithm_INCLUDE_DIR})

@@ -1,6 +1,10 @@
 # proteolizard-algorithm
 ### A collection of algorithms and tooling to process ion-mobility mass-spectrometry raw-data
 
+<p align="center">
+  <img src="logo.png" alt="logo" width="500"/>
+</p>
+
 This repository is part of the `proteolizard` project, a free and open-source solution 
 for raw-data access, algorithms and raw-data visualization of mass spectrometry data generated with 
 the bruker timsTOF device.
@@ -54,6 +58,14 @@ shell> cd proteolizard-algorithm
 ```sh
 shell> mkdir build && cd build
 shell> cmake ../cpp -DCMAKE_BUILD_TYPE=Release
+shell> make
+```
+
+Or, if you did not install `proteolizard-data` into a global install directory, you also need to set CMAKE_PREFIX_PATH to the same installation prefix used for proteolizard-data:
+
+```sh
+shell> mkdir build && cd build
+shell> cmake ../cpp -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=path/to/proteolizard-data/install
 shell> make
 ```
 
@@ -130,8 +142,8 @@ DUMMY
 Zohora et al.[^fn4][^fn5]
 
 ---
-[^fn1]: Locality-sensitive hashing enables signal classification in high-throughput mass spectrometry raw data at scale. 
-bioRxiv 2021. https://doi.org/10.1101/2021.07.01.450702 
+[^fn1]: Locality-sensitive hashing enables efficient and scalable signal classification in high-throughput mass spectrometry raw data.
+BMC Bioinformatics, 2022. https://doi.org/10.1186/s12859-022-04833-5
 
 [^fn2]: A Fast and Memory-Efficient Spectral Library Search Algorithm Using Locality-Sensitive Hashing. 
 Proteomics, 2020. https://doi.org/10.1002/pmic.202000002

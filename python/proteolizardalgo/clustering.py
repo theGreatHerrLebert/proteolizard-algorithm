@@ -15,7 +15,7 @@ def cluster_precursors_dbscan(precursor_points,
                               resolution: int = 50_000):
     """
     cluster the precursors of a given (potentially filtered) precursor slice of timsTOF data with dbscan
-    :param precursor_points: a MidiaSlice that must contain precursor data
+    :param precursor_points: a Slice that must contain precursor data
     :param epsilon: DBSCAN epsilon
     :param min_samples: DBSCAN min_samples
     :param metric: DBSCAN metric
@@ -72,7 +72,7 @@ def cluster_precursors_hdbscan(precursor_points,
     :param leaf_size:
     :param min_cluster_size:
     :param p:
-    :param experiment_slice: a MidiaSlice that must contain precursor data
+    :param experiment_slice: a Slice that must contain precursor data
     :param min_samples: DBSCAN min_samples
     :param metric: DBSCAN metric
     :param cycle_scaling: a scale factor for rt, will be calculated as index / 2^cycle_scaling
