@@ -1,52 +1,58 @@
+from __future__ import annotations
+
 import numpy as np
 import math
-
 from proteolizarddata.data import MzSpectrum
 
-# declare constants
-SLOPE_LAM = 0.000594
-INTERCEPT_LAM = -0.03091
-MASS_NEUTRON = 1.008664916
-INV_SQRT_2PI = 0.3989422804014327
-SIGMA = 500 / (2.355 * 25000)
+import numba
+
+@numba.jit(nopython=True)
+def factorial(n: int):
+    if n <= 0:
+        return 1
+    return n * factorial(n - 1)
 
 
 # linear dependency of mass
-def lam(mass):
+@numba.jit(nopython=True)
+def lam(mass: float, slope: float = 0.000594, intercept: float = -0.03091):
     """
-
+    :param intercept:
+    :param slope:
     :param mass:
     :return:
     """
-    return SLOPE_LAM * mass + INTERCEPT_LAM
+    return slope * mass + intercept
 
 
 #
-def weight(mass, num_steps):
+@numba.jit(nopython=True)
+def weight(mass: float, num_steps: int):
     """
-
     :param mass:
     :param num_steps:
     :return:
     """
-    return math.exp(-lam(mass)) * math.pow(lam(mass), num_steps) / math.factorial(num_steps)
+    return np.exp(-lam(mass)) * np.power(lam(mass), num_steps) / factorial(num_steps)
 
 
-def normal_pdf(x, mass, s=0.001):
+@numba.jit(nopython=True)
+def normal_pdf(x: float, mass: float, s: float = 0.001, inv_sqrt_2pi: float = 0.3989422804014327):
     """
-
+    :param inv_sqrt_2pi:
     :param x:
     :param mass:
     :param s:
     :return:
     """
     a = (x - mass) / s
-    return INV_SQRT_2PI / s * math.exp(-0.5 * a * a)
+    return inv_sqrt_2pi / s * np.exp(-0.5 * a * a)
 
 
-def iso(x, mass, charge, sigma, amp, K):
+@numba.jit(nopython=True)
+def iso(x: int, mass: float, charge: float, sigma: float, amp: float, K: int, mass_neutron: float = 1.008664916):
     """
-
+    :param mass_neutron:
     :param x:
     :param mass:
     :param charge:
@@ -57,14 +63,22 @@ def iso(x, mass, charge, sigma, amp, K):
     """
     acc = 0
     for k in range(0, K):
-        mean = (mass + MASS_NEUTRON * k) / charge
+        mean = (mass + mass_neutron * k) / charge
         acc += weight(mass, k) * normal_pdf(x, mean, sigma)
     return amp * acc
 
 
-def generate_pattern(lower_bound, upper_bound, step_size, mass, charge, amp, k, sigma=SIGMA, resolution=2):
+@numba.jit(nopython=True)
+def generate_pattern(lower_bound: float,
+                     upper_bound: float,
+                     step_size: float,
+                     mass: float,
+                     charge: float,
+                     amp: float,
+                     k: int,
+                     sigma: float = 0.008492569002123142,
+                     resolution: int = 2):
     """
-
     :param lower_bound:
     :param upper_bound:
     :param step_size:
@@ -84,7 +98,6 @@ def generate_pattern(lower_bound, upper_bound, step_size, mass, charge, amp, k, 
     while x < stop:
         intensity_list.append(iso(x, mass, charge, sigma, amp, k))
         mz_list.append(x)
-        x += step_size
+        x = x + step_size
 
-    return MzSpectrum(None, -1, -1, mz_list, np.array(intensity_list).astype(np.int32)).to_resolution(resolution)
-
+    return mz_list, np.array(intensity_list).astype(np.int32)
