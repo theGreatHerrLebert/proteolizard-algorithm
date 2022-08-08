@@ -16,83 +16,12 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D # pylint: disable=unused-import
 
 class FeatureLoaderDDA():
-    """ Class to load a precursor peptide feature
-        by it's Id from a DDA dataset.
     """
-    def _fetch_precursor(self)-> None:
-        """get row data from experiment's precursors table
-        """
-        raw_data = self.dataset_pointer
-        feature_data_row = raw_data.get_precursor_by_id(self.precursor_id)
-        self.monoisotopic_mz = feature_data_row["MonoisotopicMz"].values[0]
-        self.charge = feature_data_row["Charge"].values[0]
-        self.scan_number = feature_data_row["ScanNumber"].values[0]
-        self.frame_id = feature_data_row["Parent"].values[0]
+    Class to load a precursor peptide feature
+    by it's Id from a DDA dataset.
+    """
 
-    def _get_precursor_summary(self) -> None:
-        """returns precursor row data
-        """
-        summary = DataFrame({"MonoisotopicMz":self.monoisotopic_mz,
-                                "Charge":self.charge,
-                                "ScanNumber":self.scan_number,
-                                "FrameID":self.frame_id
-                                })
-        return summary
-
-    def _get_scan_boundaries(self,datapoints:np.ndarray,
-                             ims_model:str="gaussian",
-                             cut_off_left:float=0.01,
-                             cut_off_right:float=0.99,
-                             skip_zeros:bool=True) -> tuple:
-        """Estimate minimum scan and maximum scan.
-
-        Args:
-            datapoints (np.ndarray): Scan, Itensity data from monoisotopic peak
-              as 2D array: [[scan1,intensity_n],...,[scan_n,intensity_n]]
-            ims_model (str, optional): Model of an IMS peak.
-              Defaults to "gaussian".
-            cut_off_left (float, optional): Probability mass to ignore on
-              "left side". Defaults to 0.05.
-            cut_off_right (float, optional): Probability mass to ignore on
-              "right side". Defaults to 0.95.
-            skip_zeros (bool, optional): Wether to ignore zero intensities in
-              monoisotopic_profile. Defaults to True.
-
-        Returns:
-            tuple (int,int): (lower scan bound, upper scan bound)
-        """
-        # model functions to fit
-        def _gauss(data,a,mu,sig):
-            return a/(sig*np.sqrt(2*np.pi))*\
-                   np.exp(-0.5*np.power((data-mu)/(sig),2))
-        if skip_zeros:
-            datapoints = datapoints[datapoints[:,1]!=0]
-        # extract data
-        x = datapoints.T[0]
-        y = datapoints.T[1]
-
-        if ims_model == "gaussian":
-            # fit model function
-
-            param_opt,param_cov = curve_fit(_gauss, # pylint: disable=unused-variable
-                                            x,
-                                            y,
-                                            bounds=([y.min(),x.min(),0],
-                                            [y.max(),x.max(),inf]))
-
-            # instantiate a normal distribution with calculated parameters
-            fit_dist = norm(param_opt[1],param_opt[2])
-            # calculate lower and upper quantile
-            lower = fit_dist.ppf(cut_off_left)
-            upper = fit_dist.ppf(cut_off_right)
-
-            return(int(lower//1),int(upper//1+1))
-
-        else:
-            raise NotImplementedError("This model is not implemented")
-
-
-    def __init__(self, data_handle: PyTimsDataHandle, precursor_id: int):
+    def __init__(self, data_handle: PyTimsDataHandleDDA, precursor_id: int):
         self.dataset_pointer = data_handle
         self.precursor_id = precursor_id
         # get summary data
@@ -199,11 +128,81 @@ class FeatureLoaderDDA():
         return DataFrame({"Scan":scans,"Mz":mzs,"Intensity":intensity},
                           dtype="float")
 
+    def _fetch_precursor(self)-> None:
+        """
+        get row data from experiment's precursors table
+        """
+        raw_data = self.dataset_pointer
+        feature_data_row = raw_data.get_precursor_by_id(self.precursor_id)
+        self.monoisotopic_mz = feature_data_row["MonoisotopicMz"].values[0]
+        self.charge = feature_data_row["Charge"].values[0]
+        self.scan_number = feature_data_row["ScanNumber"].values[0]
+        self.frame_id = feature_data_row["Parent"].values[0]
 
-    def load_hull_data_4d(self):
-        raise NotImplementedError("Extraction of 4D feature\
-          is not yet implemented, use .loadData3D for \
-          IMS,mz,Intensitiy extraction")
+    def _get_precursor_summary(self) -> None:
+        """
+        returns precursor row data
+        """
+        summary = DataFrame({"MonoisotopicMz":self.monoisotopic_mz,
+                             "Charge":self.charge,
+                             "ScanNumber":self.scan_number,
+                             "FrameID":self.frame_id
+                                })
+        return summary
+
+    def _get_scan_boundaries(self,
+                             datapoints:np.ndarray,
+                             ims_model:str="gaussian",
+                             cut_off_left:float=0.01,
+                             cut_off_right:float=0.99,
+                             skip_zeros:bool=True) -> tuple:
+        """Estimate minimum scan and maximum scan.
+
+        Args:
+            datapoints (np.ndarray): Scan, Itensity data from monoisotopic peak
+              as 2D array: [[scan1,intensity_n],...,[scan_n,intensity_n]]
+            ims_model (str, optional): Model of an IMS peak.
+              Defaults to "gaussian".
+            cut_off_left (float, optional): Probability mass to ignore on
+              "left side". Defaults to 0.05.
+            cut_off_right (float, optional): Probability mass to ignore on
+              "right side". Defaults to 0.95.
+            skip_zeros (bool, optional): Wether to ignore zero intensities in
+              monoisotopic_profile. Defaults to True.
+
+        Returns:
+            tuple (int,int): (lower scan bound, upper scan bound)
+        """
+        # model functions to fit
+        def _gauss(data,a,mu,sig):
+            return a/(sig*np.sqrt(2*np.pi))*\
+                   np.exp(-0.5*np.power((data-mu)/(sig),2))
+        if skip_zeros:
+            datapoints = datapoints[datapoints[:,1]!=0]
+        # extract data
+        x = datapoints.T[0]
+        y = datapoints.T[1]
+
+        if ims_model == "gaussian":
+            # fit model function
+
+            param_opt,param_cov = curve_fit(_gauss, # pylint: disable=unused-variable
+                                            x,
+                                            y,
+                                            bounds=([y.min(),x.min(),0],
+                                            [y.max(),x.max(),inf]))
+
+            # instantiate a normal distribution with calculated parameters
+            fit_dist = norm(param_opt[1],param_opt[2])
+            # calculate lower and upper quantile
+            lower = fit_dist.ppf(cut_off_left)
+            upper = fit_dist.ppf(cut_off_right)
+
+            return(int(lower//1),int(upper//1+1))
+
+        else:
+            raise NotImplementedError("This model is not implemented")
+
 
     @staticmethod
     def get_num_peaks(monoisotopic_mz: float,
