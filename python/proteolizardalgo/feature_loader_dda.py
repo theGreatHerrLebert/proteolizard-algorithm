@@ -1,7 +1,7 @@
 """Module for loading DDA precursor data
 
 This module is providing a class to load a precursor peptide feature
-aquired by data depending acquistion. The loader recognizes monoisotopic mass
+acquired by data depending acquisition. The loader recognizes monoisotopic mass
 and charge of feature as determined during DDA procedure.
 """
 
@@ -9,7 +9,7 @@ from cmath import inf
 from scipy.stats import poisson, norm
 from scipy.optimize import curve_fit
 from proteolizarddata.data import PyTimsDataHandleDDA, TimsFrame
-from pystoms.clustering import precursor_dbscan_3d
+from proteolizardalgo.clustering import cluster_precursors_dbscan
 from pandas import DataFrame
 import numpy as np
 import matplotlib.pyplot as plt
@@ -34,7 +34,7 @@ class FeatureLoaderDDA():
                           averagine_prob_target:float = 0.95,
                           plot_feature:bool = False,
                           scan_range:int = 80) -> DataFrame:
-        """Estimate convex hull of feature and return datapoints inside hull.
+        """Estimate convex hull of feature and return data points inside hull.
 
         Args:
             intensity_min (int, optional): Minimal peak intensity considered
@@ -49,27 +49,17 @@ class FeatureLoaderDDA():
             plot_feature (bool, optional): If true a scatterplot of
               feature is printed. Defaults to False.
             scan_range (int, optional): This parameter is handling
-              the number of scans used to infer the scan bounadaries
+              the number of scans used to infer the scan boundaries
               of the monoisotopic peak. Defaults to 80.
 
         Returns:
-            DataFrame: Dataframe with points in convex hull (scan,mz,intensity)
+            DataFrame: DataFrame with points in convex hull (scan,mz,intensity)
         """
         # bounds of monoisotopic peak based on arguments
         scan_min_init = int(self.scan_number//1)-scan_range//2
         scan_max_init = int(self.scan_number//1)+scan_range//2
-        mz_min_init = self.monoisotopic_mz-mz_peak_width
-        mz_max_init = self.monoisotopic_mz+mz_peak_width
 
-        # extract monoisotopic peak
-        frame_init = self.dataset_pointer.get_frame(self.frame_id)\
-          .filter_ranged(scan_min_init,
-                         scan_max_init,
-                         mz_min_init,
-                         mz_max_init,
-                         intensity_min)
-
-         # via averagine calculate how many peaks should be considerd.
+         # via averagine calculate how many peaks should be considered.
         peak_n = self.get_num_peaks(self.monoisotopic_mz,
                                     self.charge,
                                     averagine_prob_target)
@@ -78,7 +68,17 @@ class FeatureLoaderDDA():
           (peak_n-1)*1/self.charge+mz_peak_width
 
         if ims_model in ["gaussian"]:
+            # small mz window
+            mz_min_init = self.monoisotopic_mz-mz_peak_width
+            mz_max_init = self.monoisotopic_mz+mz_peak_width
 
+            # extract monoisotopic peak
+            frame_init = self.dataset_pointer.get_frame(self.frame_id)\
+            .filter_ranged(scan_min_init,
+                            scan_max_init,
+                            mz_min_init,
+                            mz_max_init,
+                            intensity_min)
             # calculate profile of monoisotopic peak
             mono_profile_data = self.get_monoisotopic_profile(
                                           self.monoisotopic_mz,
@@ -92,18 +92,45 @@ class FeatureLoaderDDA():
                                                               ims_model)
 
         elif ims_model == "DBSCAN":
+            dbscan_mz_window_factor = 5
+            mz_min_init = self.monoisotopic_mz-dbscan_mz_window_factor*mz_peak_width
+            mz_max_init = self.monoisotopic_mz+dbscan_mz_window_factor*mz_peak_width
 
-            clustered_data, mi_cluster_id = precursor_dbscan_3d(
-                                              frame_init,
-                                              add_point = (self.monoisotopic_mz,
-                                                          self.scan_number),
-                                              plot=plot_feature)
-
+            frame_init = self.dataset_pointer.get_frame(self.frame_id)\
+                        .filter_ranged(
+                            mz_min = mz_min_init,
+                            mz_max = mz_max_init,
+                            intensity_min = intensity_min)
+            mzs_init = frame_init.mz()
+            scans_init = frame_init.scan()
+            rts_init = np.repeat(frame_init.frame_id(),mzs_init.shape[0])
+            intensity_init = frame_init.intensity()
+            points = np.vstack([rts_init,scans_init,mzs_init,intensity_init]).T
+            # add monoisotopic peak
+            # monoisotopic peak point as [rt (frame_id), scan, mz, arbitrary intensity = 100]
+            mi_point = [self.frame_id,self.scan_number,self.monoisotopic_mz,100]
+            # store at end of points via vstack and store position to get cluster id
+            mi_position = len(points)
+            points_with_mi = np.vstack([points,mi_point])
+            # cluster data via DBSCAN
+            clustered_data = cluster_precursors_dbscan(
+                                                    points_with_mi,
+                                                    epsilon=2,
+                                                    min_samples=5)
+            # get cluster id of added mono isotopic peak
+            mi_cluster_id = clustered_data.label[mi_position]
+            if plot_feature:
+                plt.scatter(x=clustered_data.mz,y=clustered_data.scan,c=clustered_data.label,alpha=0.2)
+                plt.scatter(x=clustered_data.mz[mi_position],y=clustered_data.scan[mi_position],color="black",marker="s")
+                plt.show()
             if mi_cluster_id != -1:
-                mi_selection = clustered_data.Cluster == mi_cluster_id
+                # cluster containing MI peak was found, select all points from it
+                mi_selection = clustered_data.label == mi_cluster_id
                 mi_cluster = clustered_data[mi_selection]
-                scan_max_estimated = int(mi_cluster.Scan.max())
-                scan_min_estimated = int(mi_cluster.Scan.min())
+                # scan max and min are estimated to be highest and lowest
+                # scan number in cluster, respectively
+                scan_max_estimated = int(mi_cluster.scan.max())
+                scan_min_estimated = int(mi_cluster.scan.min())
             else:
                 raise ValueError("Monoisotopic peak cluster could not be found,\
                   use different method for estimation of scan width")
@@ -124,7 +151,7 @@ class FeatureLoaderDDA():
             scatter_3d = plt.figure()
             ax = scatter_3d.add_subplot(111,projection="3d")
             ax.scatter(mzs,scans,intensity)
-        # return as Dataframe
+        # return as DataFrame
         return DataFrame({"Scan":scans,"Mz":mzs,"Intensity":intensity},
                           dtype="float")
 
@@ -133,7 +160,7 @@ class FeatureLoaderDDA():
         get row data from experiment's precursors table
         """
         raw_data = self.dataset_pointer
-        feature_data_row = raw_data.get_precursor_by_id(self.precursor_id)
+        feature_data_row = raw_data.get_selected_precursor_by_id(self.precursor_id)
         self.monoisotopic_mz = feature_data_row["MonoisotopicMz"].values[0]
         self.charge = feature_data_row["Charge"].values[0]
         self.scan_number = feature_data_row["ScanNumber"].values[0]
@@ -159,7 +186,7 @@ class FeatureLoaderDDA():
         """Estimate minimum scan and maximum scan.
 
         Args:
-            datapoints (np.ndarray): Scan, Itensity data from monoisotopic peak
+            datapoints (np.ndarray): Scan, Intensity data from monoisotopic peak
               as 2D array: [[scan1,intensity_n],...,[scan_n,intensity_n]]
             ims_model (str, optional): Model of an IMS peak.
               Defaults to "gaussian".
@@ -194,7 +221,7 @@ class FeatureLoaderDDA():
 
             # instantiate a normal distribution with calculated parameters
             fit_dist = norm(param_opt[1],param_opt[2])
-            # calculate lower and upper quantile
+            # calculate lower and upper quantiles
             lower = fit_dist.ppf(cut_off_left)
             upper = fit_dist.ppf(cut_off_right)
 
@@ -215,7 +242,7 @@ class FeatureLoaderDDA():
             monoisotopic_mz (float): Position of monoisotopic peak.
             charge (int): Charge of peptide
             prob_mass_target(float, optional): Minimum probability mass
-              of poisson distribtuion, that shall be covered
+              of poisson distribution, that shall be covered
               (beginning with monoisotopic peak). Defaults to 0.95.
         Returns:
             int: Number of relevant peaks
@@ -230,7 +257,7 @@ class FeatureLoaderDDA():
         prob_mass_covered = 0
         peak_number = 0
         while prob_mass_covered < prob_mass_target:
-            # calculation of probabilty mass of a single peak
+            # calculation of probability mass of a single peak
             peak_mass = poisson_averagine.pmf(peak_number)
             prob_mass_covered += peak_mass
             peak_number += 1
@@ -289,7 +316,3 @@ class FeatureLoaderDDA():
 
 
         return idxs
-
-
-
-
