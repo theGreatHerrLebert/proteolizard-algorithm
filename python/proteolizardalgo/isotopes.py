@@ -6,6 +6,8 @@ from proteolizarddata.data import MzSpectrum
 
 import numba
 
+MASS_PROTON = 1.007276466583
+
 @numba.jit(nopython=True)
 def factorial(n: int):
     if n <= 0:
@@ -25,7 +27,6 @@ def lam(mass: float, slope: float = 0.000594, intercept: float = -0.03091):
     return slope * mass + intercept
 
 
-#
 @numba.jit(nopython=True)
 def weight(mass: float, num_steps: int):
     """
@@ -100,4 +101,4 @@ def generate_pattern(lower_bound: float,
         mz_list.append(x)
         x = x + step_size
 
-    return mz_list, np.array(intensity_list).astype(np.int32)
+    return np.array(mz_list) + MASS_PROTON, np.array(intensity_list).astype(np.int32)
