@@ -3,6 +3,9 @@ from setuptools import setup
 with open("../README.md", "r") as fh:
     ld = fh.read()
 
+with open("requirements.txt","r") as r_file:
+    install_r = r_file.readlines()
+
 setup(
     name='proteolizardalgo',
     version='0.1.0',
@@ -16,14 +19,5 @@ setup(
     ],
     long_description=ld,
     long_description_content_type="text/markdown",
-    install_requires=[
-        "tensorflow >=2.7",
-        "numpy",
-        "scipy",
-        "pandas >=1.1",
-        "opentims_bruker_bridge",
-        "sklearn",
-        "tqdm",
-        "pytest"
-    ]
+    install_requires=install_r
 )
