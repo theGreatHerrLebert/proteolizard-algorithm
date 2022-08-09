@@ -36,24 +36,25 @@ class FeatureLoaderDDA():
                           scan_range:int = 80) -> DataFrame:
         """Estimate convex hull of feature and return data points inside hull.
 
-        Args:
-            intensity_min (int, optional): Minimal peak intensity considered
+            :param intensity_min: Minimal peak intensity considered
               as signal. Defaults to 10.
-            ims_model (str, optional): Model use in estimation of feature's
+            :param ims_model: Model use in estimation of feature's
               width in IMS dimension. Defaults to "gaussian".
-            mz_peak_width (float, optional): Expected width of a peak in mz
-              dimension. Defaults to 0.1.
-            averagine_prob_target (float, optional): Probability mass
+            :param mz_peak_width: Expected width of a peak in mz
+              dimension. With ims_model being 'gaussian' a slice of
+              2*`mz_peak_width` is considered for estimation of feature bounds
+              in scan dimension. The bounds of the mz dimension are
+              monoisotopic peak and last isotopic peak (predicted by averagine
+              model) with `mz_peak_width` as padding. Defaults to 0.1.
+            :param averagine_prob_target: Probability mass
               of averagine model's poisson distribution covered with
               extracted isotopic peaks . Defaults to 0.95.
-            plot_feature (bool, optional): If true a scatterplot of
+            :param plot_feature: If true a scatterplot of
               feature is printed. Defaults to False.
-            scan_range (int, optional): This parameter is handling
+            :param scan_range: This parameter is handling
               the number of scans used to infer the scan boundaries
               of the monoisotopic peak. Defaults to 80.
-
-        Returns:
-            DataFrame: DataFrame with points in convex hull (scan,mz,intensity)
+            :return: DataFrame with points in convex hull (scan,mz,intensity)
         """
         # bounds of monoisotopic peak based on arguments
         scan_min_init = int(self.scan_number//1)-scan_range//2
@@ -182,23 +183,20 @@ class FeatureLoaderDDA():
                              ims_model:str="gaussian",
                              cut_off_left:float=0.01,
                              cut_off_right:float=0.99,
-                             skip_zeros:bool=True) -> tuple:
+                             skip_zeros:bool=True) -> tuple[int,int]:
         """Estimate minimum scan and maximum scan.
 
-        Args:
-            datapoints (np.ndarray): Scan, Intensity data from monoisotopic peak
-              as 2D array: [[scan1,intensity_n],...,[scan_n,intensity_n]]
-            ims_model (str, optional): Model of an IMS peak.
-              Defaults to "gaussian".
-            cut_off_left (float, optional): Probability mass to ignore on
-              "left side". Defaults to 0.05.
-            cut_off_right (float, optional): Probability mass to ignore on
-              "right side". Defaults to 0.95.
-            skip_zeros (bool, optional): Wether to ignore zero intensities in
-              monoisotopic_profile. Defaults to True.
-
-        Returns:
-            tuple (int,int): (lower scan bound, upper scan bound)
+        :param datapoints: Scan, Intensity data from monoisotopic peak
+            as 2D array: [[scan1,intensity_n],...,[scan_n,intensity_n]]
+        :param ims_model: Model of an IMS peak.
+            Defaults to "gaussian".
+        :param cut_off_left: Probability mass to ignore on
+            "left side". Defaults to 0.05.
+        :param cut_off_right: Probability mass to ignore on
+            "right side". Defaults to 0.95.
+        :param skip_zeros: Wether to ignore zero intensities in
+            monoisotopic_profile. Defaults to True.
+        :return: (lower scan bound, upper scan bound)
         """
         # model functions to fit
         def _gauss(data,a,mu,sig):
@@ -238,14 +236,12 @@ class FeatureLoaderDDA():
         """Calculation of number of isotopic peaks
         by averagine model.
 
-        Args:
-            monoisotopic_mz (float): Position of monoisotopic peak.
-            charge (int): Charge of peptide
-            prob_mass_target(float, optional): Minimum probability mass
-              of poisson distribution, that shall be covered
-              (beginning with monoisotopic peak). Defaults to 0.95.
-        Returns:
-            int: Number of relevant peaks
+        :param monoisotopic_mz: Position of monoisotopic peak.
+        :param charge: Charge of peptide
+        :param prob_mass_target: Minimum probability mass
+            of poisson distribution, that shall be covered
+            (beginning with monoisotopic peak). Defaults to 0.95.
+        :return: Number of relevant peaks
         """
         # calculate lam of averagine poisson distribution
         mass = monoisotopic_mz * charge
@@ -277,17 +273,15 @@ class FeatureLoaderDDA():
         Sums up peaks per scan that have a mz value close enough (mz_range)
         to monoisotopic peak mz.
 
-        Args:
-            monoisotopic_mz (float): Mz value of peak.
-            scan_number (float): ScanNumber of peak.
-            frame_slice (TimsFrame): Slice of monoisotopic peak
-            scan_range (int, optional): Number of scans to consider.
-              Defaults to 20.
-            mz_range (float, optional): Maximal distance of a peak
-              to monoisotopic mz to be considered in calculation.
-              Defaults to 0.05.
-        Returns:
-            np.ndarray: 2D Array of structure [[scan,intensity],...]
+        :param monoisotopic_mz: Mz value of peak.
+        :param scan_number: ScanNumber of peak.
+        :param frame_slice: Slice of monoisotopic peak
+        :param scan_range: Number of scans to consider.
+            Defaults to 20.
+        :param mz_range: Maximal distance of a peak
+            to monoisotopic mz to be considered in calculation.
+            Defaults to 0.05.
+        :return: 2D Array of structure [[scan,intensity],...]
         """
         # lowest scan number and highest scan number
         scan_l = int(scan_number//1)-scan_range//2
