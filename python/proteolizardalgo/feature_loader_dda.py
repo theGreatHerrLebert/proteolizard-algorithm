@@ -33,7 +33,7 @@ class FeatureLoaderDDA():
                           mz_peak_width:float = 0.1,
                           averagine_prob_target:float = 0.95,
                           plot_feature:bool = False,
-                          scan_range:int = 80) -> DataFrame:
+                          scan_range:int = 40) -> DataFrame:
         """Estimate convex hull of feature and return data points inside hull.
 
             :param intensity_min: Minimal peak intensity considered
@@ -53,12 +53,9 @@ class FeatureLoaderDDA():
               feature is printed. Defaults to False.
             :param scan_range: This parameter is handling
               the number of scans used to infer the scan boundaries
-              of the monoisotopic peak. Defaults to 80.
+              of the monoisotopic peak. Defaults to 40.
             :return: DataFrame with points in convex hull (scan,mz,intensity)
         """
-        # bounds of monoisotopic peak based on arguments
-        scan_min_init = int(self.scan_number//1)-scan_range//2
-        scan_max_init = int(self.scan_number//1)+scan_range//2
 
          # via averagine calculate how many peaks should be considered.
         peak_n = self.get_num_peaks(self.monoisotopic_mz,
@@ -69,23 +66,22 @@ class FeatureLoaderDDA():
           (peak_n-1)*1/self.charge+mz_peak_width
 
         if ims_model in ["gaussian"]:
+
             # small mz window
             mz_min_init = self.monoisotopic_mz-mz_peak_width
             mz_max_init = self.monoisotopic_mz+mz_peak_width
 
             # extract monoisotopic peak
             frame_init = self.dataset_pointer.get_frame(self.frame_id)\
-            .filter_ranged(scan_min_init,
-                            scan_max_init,
-                            mz_min_init,
-                            mz_max_init,
-                            intensity_min)
+            .filter_ranged( mz_min = mz_min_init,
+                            mz_max = mz_max_init,
+                            intensity_min = intensity_min)
             # calculate profile of monoisotopic peak
             mono_profile_data = self.get_monoisotopic_profile(
                                           self.monoisotopic_mz,
                                           self.scan_number,
                                           frame_init,
-                                          scan_range//2,
+                                          scan_range,
                                           mz_peak_width/2)
             # estimate scan boundaries
             scan_min_estimated,scan_max_estimated = self._get_scan_boundaries(
@@ -266,7 +262,7 @@ class FeatureLoaderDDA():
     def get_monoisotopic_profile(monoisotopic_mz:float,
                                 scan_number:float,
                                 frame_slice:TimsFrame,
-                                scan_range:int = 20,
+                                scan_range:int = 40,
                                 mz_range:float=0.05) -> np.ndarray:
         """Gets profile of monoisotopic peak in IMS dimension.
 
@@ -277,7 +273,7 @@ class FeatureLoaderDDA():
         :param scan_number: ScanNumber of peak.
         :param frame_slice: Slice of monoisotopic peak
         :param scan_range: Number of scans to consider.
-            Defaults to 20.
+            Defaults to 40.
         :param mz_range: Maximal distance of a peak
             to monoisotopic mz to be considered in calculation.
             Defaults to 0.05.
