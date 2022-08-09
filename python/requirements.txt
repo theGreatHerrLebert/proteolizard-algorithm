@@ -1,0 +1,9 @@
+tensorflow>=2.7
+numpy
+scipy
+pandas>=1.1
+opentims_bruker_bridge
+sklearn
+tqdm
+pytest
+proteolizarddata>=0.1
