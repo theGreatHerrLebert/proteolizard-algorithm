@@ -2,7 +2,7 @@
 ### A collection of algorithms and tooling to process ion-mobility mass-spectrometry raw-data
 
 <p align="center">
-  <img src="logo.png" alt="logo" width="500"/>
+  <img src="ProteolizardLogo.png" alt="logo" width="500"/>
 </p>
 
 This repository is part of the `proteolizard` project, a free and open-source solution 
