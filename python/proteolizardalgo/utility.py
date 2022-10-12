@@ -4,6 +4,7 @@ from tqdm import tqdm
 from proteolizarddata.data import MzSpectrum
 from proteolizardalgo.hashing import ReferencePattern
 
+
 def peak_width_preserving_mz_transform(
         mz: np.array,
         M0: float = 500,

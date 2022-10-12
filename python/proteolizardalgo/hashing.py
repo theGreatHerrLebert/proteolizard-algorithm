@@ -125,6 +125,12 @@ class TimsHasher:
 
         return filtered_frame
 
+    def __call__(self, frame: TimsFrame):
+        return self.filter_frame_auto_correlation(frame)
+
+    def __repr__(self):
+        return f'TimsHasher(trials={self.trails}, len_trial={self.len_trial}, seed={self.seed}, resolution={self.resolution}, num_dalton={self.num_dalton}) '
+
 
 class ReferencePattern:
     """

@@ -29,9 +29,13 @@ def cluster_precursors_dbscan(precursor_points,
     points = precursor_points
 
     # make copy to avoid return of scaled values
-    rt_dim = np.copy(points[:, 0])
-    dt_dim = np.copy(points[:, 1])
-    mz_dim = np.copy(points[:, 2])
+    rt_dim = precursor_points.frame.values
+    f = np.sort(np.unique(rt_dim))
+    f_idx = dict(np.c_[f, np.arange(f.shape[0])])
+    rt_dim = [f_idx[x] for x in precursor_points.frame.values]
+
+    dt_dim = precursor_points.scan.values
+    mz_dim = precursor_points.mz.values
 
     # scale values according to parameters
     rt_dim_scaled = rt_dim / np.power(2, cycle_scaling)
@@ -43,7 +47,11 @@ def cluster_precursors_dbscan(precursor_points,
                       metric=metric).fit(np.vstack([rt_dim_scaled, dt_dim_scaled, mz_dim_scaled]).T)
 
     # return results as dataframe
-    return pd.DataFrame(np.vstack([points[:, 0], points[:, 1], points[:, 2], points[:, 3], clusters.labels_]).T,
+    return pd.DataFrame(np.vstack([precursor_points.frame.values,
+                                   precursor_points.scan.values,
+                                   precursor_points.mz.values,
+                                   precursor_points.intensity.values,
+                                   clusters.labels_]).T,
                         columns=['cycle', 'scan', 'mz', 'intensity', 'label'])
 
 
@@ -64,6 +72,7 @@ def cluster_precursors_hdbscan(precursor_points,
                                ):
     """
     cluster the precursors of a given (potentially filtered) precursor slice of timsTOF data with dbscan
+    :param mz_scaling:
     :param precursor_points:
     :param algorithm:
     :param alpha:

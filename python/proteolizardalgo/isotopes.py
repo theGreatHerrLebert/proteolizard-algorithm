@@ -8,6 +8,7 @@ import numba
 
 MASS_PROTON = 1.007276466583
 
+
 @numba.jit(nopython=True)
 def factorial(n: int):
     if n <= 0:
