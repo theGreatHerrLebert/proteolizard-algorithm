@@ -166,6 +166,25 @@ def exp_gaussian(x, μ=-3, σ=1, λ=.25):
     return A * B
 
 
+class NormalDistribution:
+    def __init__(self, μ: float, σ: float):
+        self.μ = μ
+        self.σ = σ
+
+    def __call__(self, x):
+        return gaussian(x, self.μ, self.σ)
+
+
+class ExponentialGaussianDistribution:
+    def __init__(self, μ: float = -3, σ: float = 1, λ: float = .25):
+        self.μ = μ
+        self.σ = σ
+        self.λ = λ
+
+    def __call__(self, x):
+        return exp_gaussian(x, self.μ, self.σ, self.λ)
+
+
 def preprocess_max_quant_evidence(exp: pd.DataFrame) -> pd.DataFrame:
     """
     select columns from evidence txt, rename to ionmob naming convention and transform to raw data rt in seconds

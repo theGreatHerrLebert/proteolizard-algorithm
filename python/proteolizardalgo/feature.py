@@ -30,7 +30,9 @@ class PrecursorFeatureGenerator(FeatureGenerator):
                          rt_lower: float = -9,
                          rt_upper: float = 18,
                          im_lower: float = -4,
-                         im_upper: float = 4) -> TimsSlice:
+                         im_upper: float = 4,
+                         intensity_amplitude: float = 1e3,
+                         min_intensity: int = 5) -> TimsSlice:
 
         I = create_initial_feature_distribution(num_rt, num_im, rt_lower, rt_upper,
                                                 im_lower, im_upper, distr_im, distr_rt)
@@ -46,10 +48,10 @@ class PrecursorFeatureGenerator(FeatureGenerator):
 
             for j in range(num_im):
                 intensity_scaled = intensity * I[i, j]
-                intensity_scaled = intensity_scaled * 100
+                intensity_scaled = intensity_scaled * intensity_amplitude
                 int_intensity = np.array([int(x) for x in intensity_scaled])
 
-                bt = [(x, y) for x, y in zip(mz, int_intensity) if y >= 5]
+                bt = [(x, y) for x, y in zip(mz, int_intensity) if y >= min_intensity]
 
                 mz_tmp = np.array([x for x, y in bt])
                 intensity_tmp = np.array([y for x, y in bt]).astype(np.int32)

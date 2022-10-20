@@ -116,7 +116,7 @@ def create_initial_feature_distribution(num_rt: int, num_im: int,
                                         distr_im=gaussian,
                                         distr_rt=exp_gaussian) -> np.array:
 
-    I = np.ones((num_rt, num_im))
+    I = np.ones((num_rt, num_im)).astype(np.float32)
 
     for i, x in enumerate(np.linspace(im_lower, im_upper, num_im)):
         for j, y in enumerate(np.linspace(rt_lower, rt_upper, num_rt)):
