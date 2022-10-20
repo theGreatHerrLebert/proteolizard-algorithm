@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import numpy as np
-import math
-from proteolizarddata.data import MzSpectrum
+from abc import ABC, abstractmethod
 
+from scipy.signal import argrelextrema
+from proteolizarddata.data import MzSpectrum
+from proteolizardalgo.utility import gaussian, exp_gaussian
 import numba
 
 MASS_PROTON = 1.007276466583
@@ -103,3 +105,68 @@ def generate_pattern(lower_bound: float,
         x = x + step_size
 
     return np.array(mz_list) + MASS_PROTON, np.array(intensity_list).astype(np.int32)
+
+
+@numba.jit
+def create_initial_feature_distribution(num_rt: int, num_im: int,
+                                        rt_lower: float = -9,
+                                        rt_upper: float = 18,
+                                        im_lower: float = -4,
+                                        im_upper: float = 4,
+                                        distr_im=gaussian,
+                                        distr_rt=exp_gaussian) -> np.array:
+
+    I = np.ones((num_rt, num_im))
+
+    for i, x in enumerate(np.linspace(im_lower, im_upper, num_im)):
+        for j, y in enumerate(np.linspace(rt_lower, rt_upper, num_rt)):
+            I[j, i] *= (distr_im(x) * distr_rt(y))
+
+    return I
+
+
+class IsotopePatternGenerator(ABC):
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def generate_pattern(self, mass: float, charge: int) -> (np.array, np.array):
+        pass
+
+    @abstractmethod
+    def generate_spectrum(self, mass: int, charge: int, min_intensity: int) -> MzSpectrum:
+        pass
+
+
+class AveragineGenerator(IsotopePatternGenerator):
+    def __init__(self):
+        super(AveragineGenerator).__init__()
+
+    def generate_pattern(self, mass: float, charge: int, k: int = 7,
+                         amp: float = 1e2, step_size: float = 1e-4,
+                         min_intensity: int = 5) -> (np.array, np.array):
+        assert 100 <= mass / charge <= 2000, f"m/z should be between 100 and 2000, was: {mass / charge}"
+
+        lb = mass / charge - .2
+        ub = mass / charge + k + .2
+
+        mz, i = generate_pattern(lower_bound=lb, upper_bound=ub, step_size=1e-3,
+                                 mass=mass, charge=charge, amp=1e4, k=7)
+
+        filtered = [(x, y) for x, y in zip(mz, i) if y >= min_intensity]
+
+        mz = np.array([x for x, y in filtered])
+        i = np.array([y for x, y in filtered])
+
+        return mz, i
+
+    def generate_spectrum(self, mass: int, charge: int, k: int = 7,
+                          min_intensity: int = 5, centroided: bool = True) -> MzSpectrum:
+
+        mz, i = self.generate_pattern(mass, charge, min_intensity=min_intensity, k=k)
+
+        if centroided:
+            arg = argrelextrema(i, comparator=np.greater)[0]
+            return MzSpectrum(None, -1, -1, mz[arg], i[arg])
+
+        return MzSpectrum(None, -1, -1, mz, i)

@@ -1,5 +1,77 @@
 import pandas as pd
-from proteolizarddata.data import TimsSlice
+import numpy as np
+
+from proteolizarddata.data import TimsSlice, TimsFrame, MzSpectrum
+from proteolizardalgo.isotopes import IsotopePatternGenerator, create_initial_feature_distribution
+from proteolizardalgo.utility import gaussian, exp_gaussian
+from abc import ABC, abstractmethod
+
+
+class FeatureGenerator(ABC):
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def generate_feature(self, mz: float, charge: int):
+        pass
+
+
+class PrecursorFeatureGenerator(FeatureGenerator):
+
+    def __init__(self):
+        super(PrecursorFeatureGenerator).__init__()
+
+    def generate_feature(self, mz: float, charge: int,
+                         pattern_generator: IsotopePatternGenerator,
+                         num_rt: int = 64,
+                         num_im: int = 32,
+                         distr_im=gaussian,
+                         distr_rt=exp_gaussian,
+                         rt_lower: float = -9,
+                         rt_upper: float = 18,
+                         im_lower: float = -4,
+                         im_upper: float = 4) -> TimsSlice:
+
+        I = create_initial_feature_distribution(num_rt, num_im, rt_lower, rt_upper,
+                                                im_lower, im_upper, distr_im, distr_rt)
+
+        frame_list = []
+
+        spec = pattern_generator.generate_spectrum(mz, charge, min_intensity=5, centroided=True, k=12)
+        mz, intensity = spec.mz(), spec.intensity() / np.max(spec.intensity()) * 100
+
+        for i in range(num_rt):
+
+            scan_arr, mz_arr, intensity_arr, tof_arr, inv_mob_arr = [], [], [], [], []
+
+            for j in range(num_im):
+                intensity_scaled = intensity * I[i, j]
+                intensity_scaled = intensity_scaled * 100
+                int_intensity = np.array([int(x) for x in intensity_scaled])
+
+                bt = [(x, y) for x, y in zip(mz, int_intensity) if y >= 5]
+
+                mz_tmp = np.array([x for x, y in bt])
+                intensity_tmp = np.array([y for x, y in bt]).astype(np.int32)
+
+                rts = np.repeat(i, intensity_tmp.shape[0]).astype(np.float32)
+                scans = np.repeat(j, intensity_tmp.shape[0]).astype(np.int32)
+                tof = np.ones_like(rts).astype(np.int32)
+                inv_mob = np.ones_like(scans)
+
+                scan_arr.append(scans)
+                mz_arr.append(mz_tmp)
+                intensity_arr.append(intensity_tmp)
+                tof_arr.append(tof)
+                inv_mob_arr.append(inv_mob)
+
+            frame = TimsFrame(None, i, float(i),
+                              np.hstack(scan_arr), np.hstack(mz_arr), np.hstack(intensity_arr),
+                              np.hstack(tof_arr), np.hstack(inv_mob_arr))
+
+            frame_list.append(frame)
+
+        return TimsSlice(None, frame_list, [])
 
 
 class FeatureBatch:

@@ -52,4 +52,3 @@ class FeatureIterator:
 
     def __repr__(self):
         return f'FeatureIterator(dataset={self.name}, num_features={self.feature_table.shape[0]})'
-    
