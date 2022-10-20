@@ -170,8 +170,10 @@ class FeatureLoaderDDA():
         summary = DataFrame({"MonoisotopicMz":self.monoisotopic_mz,
                              "Charge":self.charge,
                              "ScanNumber":self.scan_number,
-                             "FrameID":self.frame_id
-                                })
+                             "FrameID":self.frame_id,
+                             "PrecursorID":self.precursor_id,
+                             }, index = [0])
+        summary.set_index("PrecursorID",inplace=True)
         return summary
 
     def _get_scan_boundaries(self,
