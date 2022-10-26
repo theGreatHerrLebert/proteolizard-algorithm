@@ -9,6 +9,38 @@ from proteolizarddata.data import MzSpectrum
 from proteolizardalgo.hashing import ReferencePattern
 
 
+def proteome_from_fasta(path: str) -> pd.DataFrame:
+    """
+    Read a fasta file and return a dataframe with the protein name and sequence.
+    :param path: path to the fasta file
+    :return: a dataframe with the protein name and sequence
+    """
+    d = {}
+    with open(path) as infile:
+        gene = ''
+        header = ''
+        for i, line in enumerate(infile):
+            if line.find('>') == -1:
+                gene += line
+            elif line.find('>') != -1 and i > 0:
+                header = line
+                d[header.replace('\n', '')[4:]] = gene.replace('\n', '')
+                gene = ''
+            elif i == 0:
+                header = line
+
+    row_list = []
+
+    for key, value in d.items():
+        split_index = key.find(' ')
+        gene_id = key[:split_index].split('|')[0]
+        rest = key[split_index:]
+        row = {'id': gene_id, 'meta_data': rest, 'sequence': value}
+        row_list.append(row)
+
+    return pd.DataFrame(row_list)
+
+
 def peak_width_preserving_mz_transform(
         mz: np.array,
         M0: float = 500,
@@ -29,9 +61,10 @@ def bins_to_mz(mz_bin, win_len):
 
 def get_ref_pattern_as_spectra(ref_patterns):
     """
-
+    Get the reference patterns as a list of spectra.
+    :param ref_patterns: the reference patterns
+    :return: a list of spectra
     """
-
     spec_list = []
 
     for index, row in ref_patterns.iterrows():
