@@ -72,7 +72,7 @@ class Trypsin(Enzyme):
         return list(map(lambda e: {'sequence': e[0], 'start': e[1], 'end': e[2]}, wi))
 
 
-class PeptideMix:
+class PeptideDigest:
     def __init__(self, data: pd.DataFrame, organism: ORGANISM, enzyme: ENZYME):
         self.data = data
         self.organism = organism
@@ -88,7 +88,7 @@ class ProteinSample:
         self.data = data
         self.name = name
 
-    def digest(self, enzyme: Enzyme, missed_cleavages: int = 0, min_length: int = 7) -> PeptideMix:
+    def digest(self, enzyme: Enzyme, missed_cleavages: int = 0, min_length: int = 7) -> PeptideDigest:
 
         digest = self.data.apply(lambda r: enzyme.digest(r['sequence'], missed_cleavages, min_length), axis=1)
 
@@ -101,7 +101,7 @@ class ProteinSample:
                 pep['id'] = gene
                 r_list.append(pep)
 
-        return PeptideMix(pd.DataFrame(r_list), self.name, enzyme.name)
+        return PeptideDigest(pd.DataFrame(r_list), self.name, enzyme.name)
 
     def __repr__(self):
         return f'ProteinSample(Organism: {self.name.name})'
