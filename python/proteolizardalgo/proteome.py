@@ -2,11 +2,11 @@ import os
 
 import tensorflow as tf
 import numpy as np
+from numpy.random import choice
 import pandas as pd
 
-from ionmob.data.chemistry import calculate_mz, ccs_to_one_over_reduced_mobility, MASS_PROTON
-
 from proteolizardalgo.utility import preprocess_max_quant_sequence
+from proteolizardalgo.chemistry import get_mono_isotopic_weight, ccs_to_one_over_reduced_mobility, MASS_PROTON
 
 from enum import Enum
 from abc import ABC, abstractmethod
@@ -108,7 +108,7 @@ class ProteinSample:
                     pep['id'] = gene
                     pep['sequence'] = '_' + pep['sequence'] + '_'
                     pep['sequence-tokenized'] = preprocess_max_quant_sequence(pep['sequence'])
-                    pep['mass-theoretical'] = calculate_mz(pep['sequence-tokenized'], 1) - MASS_PROTON
+                    pep['mass-theoretical'] = get_mono_isotopic_weight(pep['sequence-tokenized'])
                     r_list.append(pep)
 
         return PeptideDigest(pd.DataFrame(r_list), self.name, enzyme.name)
@@ -153,9 +153,6 @@ class NeuralChromatography(LiquidChromatography):
         ds = self.sequences_tf_dataset(data['sequence-tokenized'])
         print('predicting irts...')
         return self.model.predict(ds)
-
-
-from numpy.random import choice
 
 
 class IonSource(ABC):
