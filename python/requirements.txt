@@ -9,7 +9,7 @@ pytest
 proteolizarddata>=0.1
 scikit-learn~=1.0.2
 proteolizardalgo~=0.1.0
-setuptools~=58.1.0
+setuptools>=58.1.0
 numba~=0.55.1
 hdbscan~=0.8.28
 matplotlib~=3.5.1
