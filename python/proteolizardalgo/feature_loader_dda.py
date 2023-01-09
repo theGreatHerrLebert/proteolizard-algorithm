@@ -4,8 +4,6 @@ This module is providing a class to load a precursor peptide feature
 acquired by data depending acquisition. The loader recognizes monoisotopic mass
 and charge of feature as determined during DDA procedure.
 """
-
-from cmath import inf
 from scipy.stats import poisson, norm
 from scipy.optimize import curve_fit
 from proteolizarddata.data import PyTimsDataHandleDDA, TimsFrame
@@ -31,9 +29,10 @@ class FeatureLoaderDDA():
                           intensity_min:int = 10,
                           ims_model:str = "gaussian",
                           mz_peak_width:float = 0.1,
+                          scan_range:int = 20,
                           averagine_prob_target:float = 0.95,
                           plot_feature:bool = False,
-                          scan_range:int = 40) -> DataFrame:
+                          ) -> DataFrame:
         """Estimate convex hull of feature and return data points inside hull.
 
             :param intensity_min: Minimal peak intensity considered
@@ -46,14 +45,14 @@ class FeatureLoaderDDA():
               in scan dimension. The bounds of the mz dimension are
               monoisotopic peak and last isotopic peak (predicted by averagine
               model) with `mz_peak_width` as padding. Defaults to 0.1.
+            :param scan_range: This parameter is handling
+              the number of scans used to infer the scan boundaries
+              of the monoisotopic peak. Defaults to 20.
             :param averagine_prob_target: Probability mass
               of averagine model's poisson distribution covered with
               extracted isotopic peaks . Defaults to 0.95.
             :param plot_feature: If true a scatterplot of
               feature is printed. Defaults to False.
-            :param scan_range: This parameter is handling
-              the number of scans used to infer the scan boundaries
-              of the monoisotopic peak. Defaults to 40.
             :return: DataFrame with points in convex hull (scan,mz,intensity)
         """
 
@@ -86,7 +85,8 @@ class FeatureLoaderDDA():
             # estimate scan boundaries
             scan_min_estimated,scan_max_estimated = self._get_scan_boundaries(
                                                               mono_profile_data,
-                                                              ims_model)
+                                                              ims_model,
+                                                              plot_feature=plot_feature)
 
         elif ims_model == "DBSCAN":
             dbscan_mz_window_factor = 5
@@ -162,6 +162,8 @@ class FeatureLoaderDDA():
         self.charge = feature_data_row["Charge"].values[0]
         self.scan_number = feature_data_row["ScanNumber"].values[0]
         self.frame_id = feature_data_row["Parent"].values[0]
+        if np.any(np.isnan([self.monoisotopic_mz,self.scan_number])):
+            raise ValueError("This precursor's MonoisotopicMz or ScanNumber in Precursors table is NaN")
 
     def _get_precursor_summary(self) -> None:
         """
@@ -181,7 +183,9 @@ class FeatureLoaderDDA():
                              ims_model:str="gaussian",
                              cut_off_left:float=0.01,
                              cut_off_right:float=0.99,
-                             skip_zeros:bool=True) -> tuple[int,int]:
+                             scan_mean_margin = 5,
+                             skip_zeros:bool=False,
+                             plot_feature:bool=False) -> tuple[int,int]:
         """Estimate minimum scan and maximum scan.
 
         :param datapoints: Scan, Intensity data from monoisotopic peak
@@ -192,8 +196,13 @@ class FeatureLoaderDDA():
             "left side". Defaults to 0.05.
         :param cut_off_right: Probability mass to ignore on
             "right side". Defaults to 0.95.
+        :param scan_mean_margin: Margin for mean of scan peak, when using
+            'gaussian' as ``ims_model``.``scipy.optimize`` looks for
+            peak mean in ``self.scan_number ± scan_mean_margin``
         :param skip_zeros: Wether to ignore zero intensities in
-            monoisotopic_profile. Defaults to True.
+            monoisotopic_profile. Defaults to False.
+        :param plot_feature: Wether to plot gauss fit.
+            Defaults to False.
         :return: (lower scan bound, upper scan bound)
         """
         # model functions to fit
@@ -212,14 +221,25 @@ class FeatureLoaderDDA():
             param_opt,param_cov = curve_fit(_gauss, # pylint: disable=unused-variable
                                             x,
                                             y,
-                                            bounds=([y.min(),x.min(),0],
-                                            [y.max(),x.max(),inf]))
+                                            p0 = [y.max(),self.scan_number,1],
+                                            bounds=([0,self.scan_number-scan_mean_margin,0],
+                                            [np.inf,self.scan_number+scan_mean_margin,np.inf]))
 
             # instantiate a normal distribution with calculated parameters
-            fit_dist = norm(param_opt[1],param_opt[2])
+            alpha_opt = param_opt[0]
+            mu_opt = param_opt[1]
+            sigma_opt = param_opt[2]
+            fit_dist = norm(mu_opt,sigma_opt)
             # calculate lower and upper quantiles
             lower = fit_dist.ppf(cut_off_left)
             upper = fit_dist.ppf(cut_off_right)
+            if plot_feature:
+                x_axis = np.arange(lower,upper+1,step=0.05)
+                _,ax1 = plt.subplots(1,1)
+                ax1.scatter(x,y)
+                ax1.vlines(self.scan_number,0,y.max())
+                ax1.plot(x_axis,_gauss(x_axis,alpha_opt,mu_opt,sigma_opt),ls=":")
+                plt.show()
 
             return(int(lower//1),int(upper//1+1))
 
