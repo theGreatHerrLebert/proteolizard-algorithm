@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import ArrayLike
 from abc import ABC, abstractmethod
 
 from scipy.signal import argrelextrema
@@ -9,6 +10,7 @@ from proteolizardalgo.utility import gaussian, exp_gaussian
 import numba
 
 MASS_PROTON = 1.007276466583
+MASS_NEUTRON = 1.008664916
 
 
 @numba.jit(nopython=True)
@@ -31,17 +33,20 @@ def lam(mass: float, slope: float = 0.000594, intercept: float = -0.03091):
 
 
 @numba.jit(nopython=True)
-def weight(mass: float, num_steps: int):
+def weight(mass: float, peak_nums: ArrayLike):
     """
     :param mass:
     :param num_steps:
     :return:
     """
-    return np.exp(-lam(mass)) * np.power(lam(mass), num_steps) / factorial(num_steps)
+    factorials = np.zeros_like(peak_nums)
+    for i,k in enumerate(peak_nums):
+        factorials[i] = factorial(k)
+    return np.exp(-lam(mass)) * np.power(lam(mass), peak_nums) / factorials
 
 
 @numba.jit(nopython=True)
-def normal_pdf(x: float, mass: float, s: float = 0.001, inv_sqrt_2pi: float = 0.3989422804014327):
+def normal_pdf(x: ArrayLike, mass: float, s: float = 0.001, inv_sqrt_2pi: float = 0.3989422804014327):
     """
     :param inv_sqrt_2pi:
     :param x:
@@ -54,7 +59,7 @@ def normal_pdf(x: float, mass: float, s: float = 0.001, inv_sqrt_2pi: float = 0.
 
 
 @numba.jit(nopython=True)
-def iso(x: int, mass: float, charge: float, sigma: float, amp: float, K: int, mass_neutron: float = 1.008664916):
+def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: int, mass_neutron: float = MASS_NEUTRON):
     """
     :param mass_neutron:
     :param x:
@@ -65,11 +70,12 @@ def iso(x: int, mass: float, charge: float, sigma: float, amp: float, K: int, ma
     :param K:
     :return:
     """
-    acc = 0
-    for k in range(0, K):
-        mean = (mass + mass_neutron * k) / charge
-        acc += weight(mass, k) * normal_pdf(x, mean, sigma)
-    return amp * acc
+
+    k = np.arange(K)
+    means = ((mass + mass_neutron * k) / charge).reshape((1,-1))
+    weights = weight(mass,k).reshape((1,-1))
+    intensities = np.sum(weights*normal_pdf(x.reshape((-1,1)), means, sigma), axis= 1)
+    return intensities * amp
 
 
 @numba.jit(nopython=True)
@@ -94,17 +100,10 @@ def generate_pattern(lower_bound: float,
     :param resolution:
     :return:
     """
-    stop = upper_bound
-    x = lower_bound
-
-    mz_list, intensity_list = [], []
-
-    while x < stop:
-        intensity_list.append(iso(x, mass, charge, sigma, amp, k))
-        mz_list.append(x)
-        x = x + step_size
-
-    return np.array(mz_list) + MASS_PROTON, np.array(intensity_list).astype(np.int32)
+    size = int((upper_bound-lower_bound)//step_size+1)
+    mzs = np.linspace(lower_bound,upper_bound,size)
+    intensities = iso(mzs,mass,charge,sigma,amp,k)
+    return mzs + MASS_PROTON, intensities
 
 
 @numba.jit
@@ -153,20 +152,18 @@ class AveragineGenerator(IsotopePatternGenerator):
         mz, i = generate_pattern(lower_bound=lb, upper_bound=ub, step_size=1e-3,
                                  mass=mass, charge=charge, amp=1e4, k=7)
 
-        filtered = [(x, y) for x, y in zip(mz, i) if y >= min_intensity]
+        mz_filtered = mz[i >= min_intensity]
+        i_filtered = i[i >= min_intensity]
 
-        mz = np.array([x for x, y in filtered])
-        i = np.array([y for x, y in filtered])
+        return mz_filtered, i_filtered.astype(int)
 
-        return mz, i
-
-    def generate_spectrum(self, mass: int, charge: int, k: int = 7,
+    def generate_spectrum(self, mass: int, charge: int, frame_id: int, scan_id: int, k: int = 7,
                           min_intensity: int = 5, centroided: bool = True) -> MzSpectrum:
 
         mz, i = self.generate_pattern(mass, charge, min_intensity=min_intensity, k=k)
 
         if centroided:
             arg = argrelextrema(i, comparator=np.greater)[0]
-            return MzSpectrum(None, -1, -1, mz[arg], i[arg])
+            return MzSpectrum(None, frame_id, scan_id, mz[arg], i[arg])
 
-        return MzSpectrum(None, -1, -1, mz, i)
+        return MzSpectrum(None, frame_id, scan_id, mz, i)
