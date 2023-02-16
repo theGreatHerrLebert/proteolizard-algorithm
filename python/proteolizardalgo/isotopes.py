@@ -79,13 +79,14 @@ def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: i
 
 
 @numba.jit(nopython=True)
-def generate_pattern(lower_bound: float,
+def numba_generate_pattern(lower_bound: float,
                      upper_bound: float,
                      step_size: float,
                      mass: float,
                      charge: float,
                      amp: float,
                      k: int,
+                     min_intensity: int,
                      sigma: float = 0.008492569002123142,
                      resolution: int = 2):
     """
@@ -103,8 +104,40 @@ def generate_pattern(lower_bound: float,
     size = int((upper_bound-lower_bound)//step_size+1)
     mzs = np.linspace(lower_bound,upper_bound,size)
     intensities = iso(mzs,mass,charge,sigma,amp,k)
-    return mzs + MASS_PROTON, intensities
+    mz_filtered = mzs[intensities >= min_intensity]
+    i_filtered = intensities[intensities >= min_intensity]
 
+    return mz_filtered + MASS_PROTON, i_filtered.astype(np.int64)
+
+@numba.jit(nopython=True)
+def centroid_pattern(mzs:ArrayLike,intensities:ArrayLike, comp_range:int = 1):
+    # this function is adapted from `scipy.signal.argrelextrema`
+    # reimplemented for numba speed up
+
+
+    n = intensities.size
+
+    # numba does nor support "clip" mode in `np.take`
+    # neither `np.pad`, so create a padded array by hand
+    start_intensity = intensities[0]
+    end_intensity = intensities[n-1]
+    pad_left = np.repeat(start_intensity,comp_range)
+    pad_right = np.repeat(end_intensity,comp_range)
+    padded_intensities = np.concatenate((pad_left,intensities,pad_right))
+
+    is_local_max = np.ones(n,dtype=np.bool8)
+    idx = np.arange(comp_range, n+comp_range)
+    middle = padded_intensities.take(idx)
+    for i in range(comp_range):
+        left = padded_intensities.take(idx-1)
+        right = padded_intensities.take(idx+1)
+        is_local_max &= (middle > left)
+        is_local_max &= (middle > right)
+        if not np.any(is_local_max):
+            break
+    arg_local_max = np.nonzero(is_local_max)[0]
+
+    return mzs[arg_local_max], intensities[arg_local_max]
 
 @numba.jit
 def create_initial_feature_distribution(num_rt: int, num_im: int,
@@ -142,20 +175,17 @@ class AveragineGenerator(IsotopePatternGenerator):
         super(AveragineGenerator).__init__()
 
     def generate_pattern(self, mass: float, charge: int, k: int = 7,
-                         amp: float = 1e2, step_size: float = 1e-4,
+                         amp: float = 1e4, step_size: float = 1e-3,
                          min_intensity: int = 5) -> (np.array, np.array):
         assert 100 <= mass / charge <= 2000, f"m/z should be between 100 and 2000, was: {mass / charge}"
 
         lb = mass / charge - .2
         ub = mass / charge + k + .2
 
-        mz, i = generate_pattern(lower_bound=lb, upper_bound=ub, step_size=1e-3,
-                                 mass=mass, charge=charge, amp=1e4, k=7)
+        mz, i = numba_generate_pattern(lower_bound=lb, upper_bound=ub, step_size=step_size,
+                                 mass=mass, charge=charge, amp=amp, k=k, min_intensity=min_intensity)
 
-        mz_filtered = mz[i >= min_intensity]
-        i_filtered = i[i >= min_intensity]
-
-        return mz_filtered, i_filtered.astype(int)
+        return mz, i
 
     def generate_spectrum(self, mass: int, charge: int, frame_id: int, scan_id: int, k: int = 7,
                           min_intensity: int = 5, centroided: bool = True) -> MzSpectrum:
