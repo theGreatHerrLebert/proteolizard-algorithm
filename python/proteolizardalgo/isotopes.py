@@ -109,36 +109,6 @@ def numba_generate_pattern(lower_bound: float,
 
     return mz_filtered + MASS_PROTON, i_filtered.astype(np.int64)
 
-@numba.jit(nopython=True)
-def centroid_pattern(mzs:ArrayLike,intensities:ArrayLike, comp_range:int = 1):
-    # this function is adapted from `scipy.signal.argrelextrema`
-    # reimplemented for numba speed up
-
-
-    n = intensities.size
-
-    # numba does nor support "clip" mode in `np.take`
-    # neither `np.pad`, so create a padded array by hand
-    start_intensity = intensities[0]
-    end_intensity = intensities[n-1]
-    pad_left = np.repeat(start_intensity,comp_range)
-    pad_right = np.repeat(end_intensity,comp_range)
-    padded_intensities = np.concatenate((pad_left,intensities,pad_right))
-
-    is_local_max = np.ones(n,dtype=np.bool8)
-    idx = np.arange(comp_range, n+comp_range)
-    middle = padded_intensities.take(idx)
-    for i in range(comp_range):
-        left = padded_intensities.take(idx-1)
-        right = padded_intensities.take(idx+1)
-        is_local_max &= (middle > left)
-        is_local_max &= (middle > right)
-        if not np.any(is_local_max):
-            break
-    arg_local_max = np.nonzero(is_local_max)[0]
-
-    return mzs[arg_local_max], intensities[arg_local_max]
-
 @numba.jit
 def create_initial_feature_distribution(num_rt: int, num_im: int,
                                         rt_lower: float = -9,
