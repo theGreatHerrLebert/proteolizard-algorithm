@@ -6,8 +6,10 @@ from abc import ABC, abstractmethod
 
 from scipy.signal import argrelextrema
 from proteolizarddata.data import MzSpectrum
-from proteolizardalgo.utility import gaussian, exp_gaussian
+from proteolizardalgo.utility import gaussian, exp_gaussian, normal_pdf
 import numba
+
+from proteolizardalgo.noise import detection_noise
 
 MASS_PROTON = 1.007276466583
 MASS_NEUTRON = 1.008664916
@@ -33,33 +35,25 @@ def lam(mass: float, slope: float = 0.000594, intercept: float = -0.03091):
 
 
 @numba.jit(nopython=True)
-def weight(mass: float, peak_nums: ArrayLike):
+def weight(mass: float, peak_nums: ArrayLike, normalize: bool = True):
     """
     :param mass:
     :param num_steps:
+    :param normalize:
     :return:
     """
     factorials = np.zeros_like(peak_nums)
+    norm = 1
     for i,k in enumerate(peak_nums):
         factorials[i] = factorial(k)
-    return np.exp(-lam(mass)) * np.power(lam(mass), peak_nums) / factorials
+    weights = np.exp(-lam(mass)) * np.power(lam(mass), peak_nums) / factorials
+    if normalize:
+        norm = weights.sum()
+    return weights/norm
 
 
 @numba.jit(nopython=True)
-def normal_pdf(x: ArrayLike, mass: float, s: float = 0.001, inv_sqrt_2pi: float = 0.3989422804014327):
-    """
-    :param inv_sqrt_2pi:
-    :param x:
-    :param mass:
-    :param s:
-    :return:
-    """
-    a = (x - mass) / s
-    return inv_sqrt_2pi / s * np.exp(-0.5 * a * a)
-
-
-@numba.jit(nopython=True)
-def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: int, mass_neutron: float = MASS_NEUTRON):
+def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: int, add_detection_noise: bool = True, mass_neutron: float = MASS_NEUTRON):
     """
     :param mass_neutron:
     :param x:
@@ -68,6 +62,7 @@ def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: i
     :param sigma:
     :param amp:
     :param K:
+    :param add_detection_noise:
     :return:
     """
 
@@ -75,7 +70,10 @@ def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: i
     means = ((mass + mass_neutron * k) / charge).reshape((1,-1))
     weights = weight(mass,k).reshape((1,-1))
     intensities = np.sum(weights*normal_pdf(x.reshape((-1,1)), means, sigma), axis= 1)
-    return intensities * amp
+    if add_detection_noise:
+        return detection_noise(intensities*amp)
+    else:
+        return intensities * amp
 
 
 @numba.jit(nopython=True)
@@ -158,9 +156,9 @@ class AveragineGenerator(IsotopePatternGenerator):
         return mz, i
 
     def generate_spectrum(self, mass: int, charge: int, frame_id: int, scan_id: int, k: int = 7,
-                          min_intensity: int = 5, centroided: bool = True) -> MzSpectrum:
+                          amp :float = 1e4, min_intensity: int = 5, centroided: bool = True) -> MzSpectrum:
 
-        mz, i = self.generate_pattern(mass, charge, min_intensity=min_intensity, k=k)
+        mz, i = self.generate_pattern(mass, charge, k=k, amp=amp, min_intensity=min_intensity)
 
         if centroided:
             arg = argrelextrema(i, comparator=np.greater)[0]
