@@ -64,37 +64,38 @@ def detection_noise(signal: ArrayLike, method: str = "poisson", custom_mu_functi
     return noised_signal
 
 @numba.jit(nopython=True)
-def generate_noise_peak(pos:float, sigma: float, intensity: float, min_intensity:int = 5):
-    step_size = sigma/10
+def generate_noise_peak(pos:float, sigma: float, intensity: float, min_intensity:int = 0, resolution:float = 3):
+    step_size = min(sigma/10,1/np.power(10,resolution))
     lower = int((pos-4*sigma)//step_size)
     upper = int((pos+4*sigma)//step_size)
     mzs = np.arange(lower,upper)*step_size
-    intensities = normal_pdf(mzs,pos,sigma,normalize=True)*intensity
+    intensities = normal_pdf(mzs,pos,sigma,normalize=True)*intensity*step_size
     return (mzs[intensities>=min_intensity], intensities[intensities>=min_intensity].astype(np.int64))
 
 
 def baseline_shot_noise_window(window:MzSpectrum,
                                window_theoretical_mz_min:float,
                                window_theoretical_mz_max:float,
-                               expected_noise_peaks: int = 100,
+                               expected_noise_peaks: int = 5,
                                expected_noise_intensity: float = 10,
-                               expected_noise_sigma:float = 0.001) -> MzSpectrum:
+                               expected_noise_sigma:float = 0.001,
+                               resolution:float = 3) -> MzSpectrum:
     """
 
     """
     num_noise_peaks = np.random.poisson(lam=expected_noise_peaks)
-    noised_window = window
+    noised_window = MzSpectrum(None,-1,-1,[],[])
     for i in range(num_noise_peaks):
         location_i = np.random.uniform(window_theoretical_mz_min,window_theoretical_mz_max)
         intensity_i = np.random.exponential(expected_noise_intensity)
         sigma_i = np.random.exponential(expected_noise_sigma)
-        noise_mz, noise_intensity = generate_noise_peak(location_i,sigma_i,intensity_i)
+        noise_mz, noise_intensity = generate_noise_peak(location_i,sigma_i,intensity_i,resolution=resolution)
         noise_peak = MzSpectrum(None,-1,-1, noise_mz, noise_intensity)
         noised_window = noised_window+noise_peak
     return noised_window
 
 
-def baseline_shot_noise(spectrum:MzSpectrum,window_size:float=50,min_intensity:int = 5):
+def baseline_shot_noise(spectrum:MzSpectrum,window_size:float=50,min_intensity:int = 5, resolution = 3):
     """
 
 
@@ -106,8 +107,8 @@ def baseline_shot_noise(spectrum:MzSpectrum,window_size:float=50,min_intensity:i
     for b,w in zip(bins,windows):
         lower = b*window_size
         upper = (b+1)*window_size
-        noised_spectrum = noised_spectrum+baseline_shot_noise_window(w,lower,upper)
-    return noised_spectrum.filter(min_mz,max_mz,min_intensity)
+        noised_spectrum = noised_spectrum+baseline_shot_noise_window(w,lower,upper,window_size*10)
+    return noised_spectrum.to_resolution(resolution).filter(min_mz,max_mz,min_intensity)
 
 def baseline_noise():
     pass

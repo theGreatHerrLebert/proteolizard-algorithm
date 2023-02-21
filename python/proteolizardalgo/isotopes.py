@@ -53,7 +53,7 @@ def weight(mass: float, peak_nums: ArrayLike, normalize: bool = True):
 
 
 @numba.jit(nopython=True)
-def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: int, add_detection_noise: bool = True, mass_neutron: float = MASS_NEUTRON):
+def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: int, step_size:float, add_detection_noise: bool = True, mass_neutron: float = MASS_NEUTRON):
     """
     :param mass_neutron:
     :param x:
@@ -61,15 +61,15 @@ def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: i
     :param charge:
     :param sigma:
     :param amp:
-    :param K:
+    :param K:4
+    :param step_size:
     :param add_detection_noise:
     :return:
     """
-
     k = np.arange(K)
     means = ((mass + mass_neutron * k) / charge).reshape((1,-1))
     weights = weight(mass,k).reshape((1,-1))
-    intensities = np.sum(weights*normal_pdf(x.reshape((-1,1)), means, sigma), axis= 1)
+    intensities = np.sum(weights*normal_pdf(x.reshape((-1,1)), means, sigma), axis= 1)*step_size
     if add_detection_noise:
         return detection_noise(intensities*amp)
     else:
@@ -79,18 +79,15 @@ def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: i
 @numba.jit(nopython=True)
 def numba_generate_pattern(lower_bound: float,
                      upper_bound: float,
-                     step_size: float,
                      mass: float,
                      charge: float,
                      amp: float,
                      k: int,
-                     min_intensity: int,
                      sigma: float = 0.008492569002123142,
-                     resolution: int = 2):
+                     resolution: int = 3):
     """
     :param lower_bound:
     :param upper_bound:
-    :param step_size:
     :param mass:
     :param charge:
     :param amp:
@@ -99,13 +96,12 @@ def numba_generate_pattern(lower_bound: float,
     :param resolution:
     :return:
     """
+    step_size = min(sigma/10,1/np.power(10,resolution))
     size = int((upper_bound-lower_bound)//step_size+1)
     mzs = np.linspace(lower_bound,upper_bound,size)
-    intensities = iso(mzs,mass,charge,sigma,amp,k)
-    mz_filtered = mzs[intensities >= min_intensity]
-    i_filtered = intensities[intensities >= min_intensity]
+    intensities = iso(mzs,mass,charge,sigma,amp,k,step_size)
 
-    return mz_filtered + MASS_PROTON, i_filtered.astype(np.int64)
+    return mzs + MASS_PROTON, intensities.astype(np.int64)
 
 @numba.jit
 def create_initial_feature_distribution(num_rt: int, num_im: int,
@@ -143,25 +139,23 @@ class AveragineGenerator(IsotopePatternGenerator):
         super(AveragineGenerator).__init__()
 
     def generate_pattern(self, mass: float, charge: int, k: int = 7,
-                         amp: float = 1e4, step_size: float = 1e-3,
+                         amp: float = 1e4, resolution: float = 3,
                          min_intensity: int = 5) -> (np.array, np.array):
+        pass
+
+    def generate_spectrum(self, mass: int, charge: int, frame_id: int, scan_id: int, k: int = 7,
+                          amp :float = 1e4, resolution:float =3, min_intensity: int = 5, centroided: bool = True) -> MzSpectrum:
+
         assert 100 <= mass / charge <= 2000, f"m/z should be between 100 and 2000, was: {mass / charge}"
 
         lb = mass / charge - .2
         ub = mass / charge + k + .2
 
-        mz, i = numba_generate_pattern(lower_bound=lb, upper_bound=ub, step_size=step_size,
-                                 mass=mass, charge=charge, amp=amp, k=k, min_intensity=min_intensity)
-
-        return mz, i
-
-    def generate_spectrum(self, mass: int, charge: int, frame_id: int, scan_id: int, k: int = 7,
-                          amp :float = 1e4, min_intensity: int = 5, centroided: bool = True) -> MzSpectrum:
-
-        mz, i = self.generate_pattern(mass, charge, k=k, amp=amp, min_intensity=min_intensity)
+        mz, i = numba_generate_pattern(lower_bound=lb, upper_bound=ub,
+                                 mass=mass, charge=charge, amp=amp, k=k, resolution=resolution)
 
         if centroided:
             arg = argrelextrema(i, comparator=np.greater)[0]
-            return MzSpectrum(None, frame_id, scan_id, mz[arg], i[arg])
+            return MzSpectrum(None, frame_id, scan_id, mz[arg], i[arg]).to_resolution(resolution).filter(lb,ub,min_intensity)
 
-        return MzSpectrum(None, frame_id, scan_id, mz, i)
+        return MzSpectrum(None, frame_id, scan_id, mz, i).to_resolution(resolution).filter(lb,ub,min_intensity)
