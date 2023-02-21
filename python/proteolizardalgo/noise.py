@@ -117,7 +117,7 @@ def baseline_shot_noise(spectrum:MzSpectrum,window_size:float=50,expected_noise_
     for b,w in zip(bins,windows):
         lower = b*window_size
         upper = (b+1)*window_size
-        noised_spectrum = noised_spectrum+baseline_shot_noise_window(w,lower,upper,window_size*10)
+        noised_spectrum = noised_spectrum+baseline_shot_noise_window(w,lower,upper,window_size*expected_noise_peaks_per_Th)
     return noised_spectrum.to_resolution(resolution).filter(min_mz,max_mz,min_intensity)
 
 def baseline_noise():
