@@ -22,7 +22,17 @@ def mu_function_poisson_default(intensity:ArrayLike) -> ArrayLike:
     return intensity+ offset
 
 @numba.jit(nopython=True)
-def detection_noise(signal: ArrayLike, method: str = "poisson", custom_mu_function: Optional[Callable] = None, custom_sigma_function: Optional[Callable] = None) -> ArrayLike:
+def detection_noise(signal: ArrayLike,
+                    method: str = "poisson",
+                    custom_mu_function: Optional[Callable] = None,
+                    custom_sigma_function: Optional[Callable] = None) -> ArrayLike:
+    """
+
+    :param signal:
+    :param method:
+    :param custom_mu_function:
+    :param custom_sigma_function:
+    """
     if method == "normal":
         if custom_sigma_function is None:
             sigma_function:Callable = sigma_function_normal_default
@@ -95,7 +105,7 @@ def baseline_shot_noise_window(window:MzSpectrum,
     return noised_window
 
 
-def baseline_shot_noise(spectrum:MzSpectrum,window_size:float=50,min_intensity:int = 5, resolution = 3):
+def baseline_shot_noise(spectrum:MzSpectrum,window_size:float=50,expected_noise_peaks_per_Th:int=10,min_intensity:int = 5, resolution = 3):
     """
 
 
