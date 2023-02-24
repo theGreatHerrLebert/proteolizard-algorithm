@@ -2,8 +2,9 @@ import io
 import json
 import tensorflow as tf
 import numpy as np
+from numpy.typing import ArrayLike
 
-from numba import jit
+import numba
 import math
 import pandas as pd
 
@@ -159,7 +160,23 @@ def create_reference_dict(D):
 
     return tmp_dict
 
-@jit
+@numba.jit(nopython=True)
+def normal_pdf(x: ArrayLike, mass: float, s: float = 0.001, inv_sqrt_2pi: float = 0.3989422804014327, normalize: bool = False):
+    """
+    :param inv_sqrt_2pi:
+    :param x:
+    :param mass:
+    :param s:
+    :return:
+    """
+    a = (x - mass) / s
+    if normalize:
+        return np.exp(-0.5 * np.power(a,2))
+    else:
+        return inv_sqrt_2pi / s * np.exp(-0.5 * np.power(a,2))
+
+
+@numba.jit
 def gaussian(x, μ=0, σ=1):
     """
     Gaussian function
@@ -174,7 +191,7 @@ def gaussian(x, μ=0, σ=1):
     return A * B
 
 
-@jit
+@numba.jit
 def exp_distribution(x, λ=1):
     """
     Exponential function
@@ -187,7 +204,7 @@ def exp_distribution(x, λ=1):
     return 0
 
 
-@jit
+@numba.jit
 def exp_gaussian(x, μ=-3, σ=1, λ=.25):
     """
     laplacian distribution with exponential decay
