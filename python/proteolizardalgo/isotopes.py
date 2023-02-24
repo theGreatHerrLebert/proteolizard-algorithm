@@ -190,8 +190,9 @@ class AveragineGenerator(IsotopePatternGenerator):
                                  mass=mass, charge=charge, amp=amp, k=k, resolution=resolution)
 
         if centroided:
-            arg = argrelextrema(i, comparator=np.greater)[0]
-            return MzSpectrum(None, frame_id, scan_id, mz[arg], i[arg]).to_resolution(resolution).filter(lb,ub,min_intensity)
+            return MzSpectrum(None, frame_id, scan_id, mz, i)\
+                    .to_resolution(resolution).filter(lb,ub,min_intensity)\
+                    .to_centroided(baseline_noise_level=max(min_intensity,1), sigma=1/np.power(10,resolution-1))
 
         return MzSpectrum(None, frame_id, scan_id, mz, i).to_resolution(resolution).filter(lb,ub,min_intensity)
 
@@ -202,11 +203,18 @@ class AveragineGenerator(IsotopePatternGenerator):
                                       scan_id: int,
                                       k:int =7,
                                       sigma: ArrayLike = 0.008492569002123142,
-                                      ion_count:int = 1000,
+                                      ion_count:int = 1000000,
                                       resolution:float = 3,
                                       intensity_per_ion:int = 1,
+                                      centroided = True,
                                       min_intensity = 5) -> MzSpectrum:
 
         assert 100 <= mass / charge <= 2000, f"m/z should be between 100 and 2000, was: {mass / charge}"
         mz, i = numba_ion_sampler(mass, charge, sigma, k, ion_count, intensity_per_ion)
-        return MzSpectrum(None,frame_id,scan_id,mz,i).to_resolution(resolution).filter(mz.min()-0.1,mz.max()+0.1,min_intensity)
+
+        if centroided:
+            return MzSpectrum(None,frame_id,scan_id,mz,i)\
+                    .to_resolution(resolution).filter(-1,-1,min_intensity)\
+                    .to_centroided(baseline_noise_level=max(min_intensity,1), sigma=1/np.power(10,resolution-1))
+        return MzSpectrum(None,frame_id,scan_id,mz,i)\
+                .to_resolution(resolution).filter(-1,-1,min_intensity)
