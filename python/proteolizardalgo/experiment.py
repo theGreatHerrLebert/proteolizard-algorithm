@@ -9,24 +9,47 @@ class ProteomicsExperiment(ABC):
         self.sample_signal = None
         self.noise_signal = None
 
+        # hardware methods
+        self._lc_method = None
+        self._ionization_method = None
+        self._ion_mobility_separation_method = None
+        self._mz_separation_method = None
+
+    @property
+    def lc_method(self):
+        return self._lc_method
+
+    @lc_method.setter
+    def lc_method(self, method: hardware.LiquidChromatography):
+        self._lc_method = method
+
+    @property
+    def ionization_method(self):
+        return self._ionization_method
+
+    @ionization_method.setter
+    def ionization_method(self, method: hardware.IonSource):
+        self._ionization_method = method
+
+    @property
+    def ion_mobility_separation_method(self):
+        return self._ion_mobility_separation_method
+
+    @ion_mobility_separation_method.setter
+    def ion_mobility_separation_method(self, method: hardware.IonMobilitySeparation):
+        self._ion_mobility_separation_method = method
+
+    @property
+    def mz_separation_method(self):
+        return self._mz_separation_method
+
+    @mz_separation_method.setter
+    def mz_separation_method(self, method: hardware.MzSeparation):
+        self._mz_separation_method = method
+
+
     @abstractmethod
     def add_sample(self, sample_data: PeptideDigest):
-        pass
-
-    @abstractmethod
-    def set_lc_method(self, Liquid):
-        pass
-
-    @abstractmethod
-    def set_ion_source_method(self, ion_source: hardware.IonSource):
-        pass
-
-    @abstractmethod
-    def set_ion_mobility_separation_method(self, ion_mobility_separation: hardware.IonMobilitySeparation):
-        pass
-
-    @abstractmethod
-    def set_mz_separation_method(self, mz_separation: hardware.MzSeparation):
         pass
 
     @abstractmethod
@@ -44,3 +67,5 @@ class TimsTOFExperiment(ProteomicsExperiment):
         else:
             self.sample_signal = sample_data
 
+    def run(self):
+        pass

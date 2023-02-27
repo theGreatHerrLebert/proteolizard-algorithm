@@ -11,10 +11,17 @@ class LiquidChromatographyApexModel(ABC):
     def __init__(self):
         pass
 
+    @abstractmethod
+    def get_retention_times(self):
+        pass
+
 class LiquidChromatographyProfileModel(ABC):
     def __init__(self):
         pass
 
+    @abstractmethod
+    def get_retention_profile(self):
+        pass
 
 class NeuralChromatographyApex(LiquidChromatographyApexModel):
 
@@ -49,8 +56,16 @@ class IonMobilityApexModel(ABC):
     def __init__(self):
         pass
 
+    @abstractmethod
+    def get_mobilities_and_ccs(self):
+        pass
+
 class IonMobilityProfileModel(ABC):
     def __init__(self):
+        pass
+
+    @abstractmethod
+    def get_mobility_profile(self):
         pass
 
 class NeuralMobilityApex(IonMobilityApexModel):
@@ -105,3 +120,17 @@ class RandomIonSource(IonizationModel):
     def ionize(self, data, allowed_charges: list = [1, 2, 3, 4], p: list = [0.1, 0.5, 0.3, 0.1]):
         return np.random.choice(allowed_charges, data.shape[0], p=p)
 
+class MzSeparationModel(ABC):
+    def __init__(self):
+        pass
+
+    @abstractmethod()
+    def get_spectrum(self):
+        pass
+
+class TOFModel(MzSeparationModel):
+    def __init__(self):
+        super().__init__()
+
+    def get_spectrum(self):
+        pass
