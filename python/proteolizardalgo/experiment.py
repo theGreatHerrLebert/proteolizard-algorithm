@@ -1,19 +1,17 @@
+import os
 from abc import ABC, abstractmethod
 import pandas as pd
 
-from proteolizardalgo.proteome import PeptideDigest
+from proteolizardalgo.proteome import PeptideDigest, ProteomicsExperimentSample
 import proteolizardalgo.hardware as hardware
 
-class ProteomicsExperimentSample:
-    def __init__(self):
-        self._data = None
-        self._input = None
-
-    def load(self, input:PeptideDigest):
-        self._input = input
-        self._data = input.data
 class ProteomicsExperiment(ABC):
-    def __init__(self):
+    def __init__(self, path: str):
+        if not os.path.exists(path):
+            os.mkdir(path)
+        self.loaded_sample = None
+
+        # signal noise discrimination
         self.sample_signal = None
         self.noise_signal = None
 
@@ -55,9 +53,8 @@ class ProteomicsExperiment(ABC):
     def mz_separation_method(self, method: hardware.MzSeparation):
         self._mz_separation_method = method
 
-
     @abstractmethod
-    def add_sample(self, sample_data: PeptideDigest):
+    def load_sample(self, sample: ProteomicsExperimentSample):
         pass
 
     @abstractmethod
@@ -66,14 +63,11 @@ class ProteomicsExperiment(ABC):
 
 
 class TimsTOFExperiment(ProteomicsExperiment):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, path:str):
+        super().__init__(path)
 
-    def add_sample(self, sample_data:PeptideDigest, reduce:bool = False, sample_size: int = 1000):
-        if reduce:
-            self.sample_signal = sample_data.sample(sample_size)
-        else:
-            self.sample_signal = sample_data
+    def load_sample(self, sample: ProteomicsExperimentSample):
+        self.loaded_sample = sample
 
     def run(self):
-        pass
+        rt_apex, frame_profile = self.lc_method.run(self.loaded_sample)

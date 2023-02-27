@@ -113,3 +113,12 @@ class ProteinSample:
     def __repr__(self):
         return f'ProteinSample(Organism: {self.name.name})'
 
+
+class ProteomicsExperimentSample:
+    """
+    A proteomics experiment could analyze e.g. whole proteins or
+    peptide digestions.
+    """
+    def __init__(self, input:PeptideDigest):
+        self.data: pd.DataFrame = input.data
+        self._input = input

@@ -6,12 +6,34 @@ import pandas as pd
 
 from proteolizardalgo.chemistry import  ccs_to_one_over_reduced_mobility
 import proteolizardalgo.hardware_models as models
-from proteolizardalgo.experiment import ProteomicsExperimentSample
+from proteolizardalgo.proteome import ProteomicsExperimentSample
 
 class Chromatography(ABC):
     def __init__(self):
         self._apex_model = None
         self._profile_model = None
+        self._frame_length = None
+        self._gradient_length = None
+
+    @property
+    def frame_length(self):
+        return self._frame_length
+
+    @frame_length.setter
+    def frame_length(self, milliseconds: int):
+        self._frame_length = milliseconds
+
+    @property
+    def gradient_length(self):
+        return self._gradient_length/(60*1000)
+
+    @gradient_length.setter
+    def gradient_length(self, minutes: int):
+        self._gradient_length = minutes*60*1000
+
+    @property
+    def num_frames(self):
+        return self._gradient_length//self._frame_length
 
     @property
     def apex_model(self):
@@ -38,7 +60,9 @@ class LiquidChromatography(Chromatography):
         super().__init__()
 
     def run(self, sample: ProteomicsExperimentSample):
-        pass
+        retention_time_apex = self._apex_model.get_retention_times(sample)
+        retention_profile = self._profile_model.get_retention_profile(sample)
+        return (retention_time_apex, retention_profile)
 
 class IonSource(ABC):
     def __init__(self):
@@ -68,10 +92,28 @@ class IonMobilitySeparation(ABC):
     def __init__(self):
         self._apex_model = None
         self._profile_model = None
+        self._num_scans = None
+        self._scan_time = None
+
+    @property
+    def num_scans(self):
+        return self._num_scans
+
+    @num_scans.setter
+    def num_scans(self, number:int):
+        self._num_scans = number
+
+    @property
+    def scan_time(self):
+        return self._scan_time
+
+    @scan_time.setter
+    def scan_time(self, microseconds:int):
+        self._scan_time = microseconds
 
     @property
     def apex_model(self):
-        return self.apex_model
+        return self._apex_model
 
     @apex_model.setter
     def apex_model(self, model: models.IonMobilityApexModel):
