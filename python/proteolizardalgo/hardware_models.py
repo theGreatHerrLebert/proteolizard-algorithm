@@ -7,7 +7,7 @@ import pandas as pd
 from proteolizardalgo.chemistry import  ccs_to_one_over_reduced_mobility
 
 
-class LiquidChromatographyApexModel(ABC):
+class ChromatographyApexModel(ABC):
     def __init__(self):
         pass
 
@@ -15,7 +15,7 @@ class LiquidChromatographyApexModel(ABC):
     def get_retention_times(self):
         pass
 
-class LiquidChromatographyProfileModel(ABC):
+class ChromatographyProfileModel(ABC):
     def __init__(self):
         pass
 
@@ -23,7 +23,7 @@ class LiquidChromatographyProfileModel(ABC):
     def get_retention_profile(self):
         pass
 
-class NeuralChromatographyApex(LiquidChromatographyApexModel):
+class NeuralChromatographyApex(ChromatographyApexModel):
 
     def __init__(self, model_path: str, tokenizer: tf.keras.preprocessing.text.Tokenizer):
         super().__init__()

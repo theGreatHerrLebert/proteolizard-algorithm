@@ -4,6 +4,14 @@ import pandas as pd
 from proteolizardalgo.proteome import PeptideDigest
 import proteolizardalgo.hardware as hardware
 
+class ProteomicsExperimentSample:
+    def __init__(self):
+        self._data = None
+        self._input = None
+
+    def load(self, input:PeptideDigest):
+        self._input = input
+        self._data = input.data
 class ProteomicsExperiment(ABC):
     def __init__(self):
         self.sample_signal = None

@@ -6,9 +6,9 @@ import pandas as pd
 
 from proteolizardalgo.chemistry import  ccs_to_one_over_reduced_mobility
 import proteolizardalgo.hardware_models as models
+from proteolizardalgo.experiment import ProteomicsExperimentSample
 
-
-class LiquidChromatography(ABC):
+class Chromatography(ABC):
     def __init__(self):
         self._apex_model = None
         self._profile_model = None
@@ -18,7 +18,7 @@ class LiquidChromatography(ABC):
         return self._apex_model
 
     @apex_model.setter
-    def apex_model(self, model:models.LiquidChromatographyApexModel):
+    def apex_model(self, model:models.ChromatographyApexModel):
         self._apex_model = model
 
     @property
@@ -26,13 +26,19 @@ class LiquidChromatography(ABC):
         return self._profile_model
 
     @profile_model.setter
-    def profile_model(self, model:models.LiquidChromatographyProfileModel):
+    def profile_model(self, model:models.ChromatographyProfileModel):
         self._profile_model = model
 
     @abstractmethod
-    def run(self, sequences: list[str]) -> np.array:
+    def run(self, sample: ProteomicsExperimentSample):
         pass
 
+class LiquidChromatography(Chromatography):
+    def __init__(self):
+        super().__init__()
+
+    def run(self, sample: ProteomicsExperimentSample):
+        pass
 
 class IonSource(ABC):
     def __init__(self):
@@ -43,18 +49,18 @@ class IonSource(ABC):
         return self._ionization_model
 
     @ionization_model.setter
-    def ionization_model(self, model:models.IonizationModel):
+    def ionization_model(self, model: models.IonizationModel):
         self._ionization_model = model
 
     @abstractmethod
-    def ionize(self, data: pd.DataFrame, allowed_charges: list = [1, 2, 3, 4, 5]) -> np.array:
+    def ionize(self, sample: ProteomicsExperimentSample):
         pass
 
 class ElectroSpray(IonSource):
     def __init__(self):
         super().__init__()
 
-    def ionize(self, data: pd.DataFrame, allowed_charges: list = [1, 2, 3, 4, 5]) -> np.array:
+    def ionize(self, sample: ProteomicsExperimentSample):
         pass
 
 
@@ -80,7 +86,7 @@ class IonMobilitySeparation(ABC):
         self._profile_model = model
 
     @abstractmethod
-    def run(self, data: pd.DataFrame):
+    def run(self, sample: ProteomicsExperimentSample):
         pass
 
 class TrappedIon(IonMobilitySeparation):
@@ -88,8 +94,9 @@ class TrappedIon(IonMobilitySeparation):
     def __init__(self):
         super().__init__()
 
-    def run():
+    def run(self, sample: ProteomicsExperimentSample):
         pass
+
 
 class MzSeparation(ABC):
     def __init__(self):
@@ -104,12 +111,12 @@ class MzSeparation(ABC):
         self._model = model
 
     @abstractmethod
-    def run(self):
+    def run(self, sample: ProteomicsExperimentSample):
         pass
 
 class TOF(MzSeparation):
     def __init__(self):
         super().__init__()
 
-    def run(self):
+    def run(self, sample: ProteomicsExperimentSample):
         pass
