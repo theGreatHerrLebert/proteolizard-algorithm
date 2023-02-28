@@ -12,11 +12,11 @@ from abc import ABC, abstractmethod
 class Profile:
 
     def __init__(self,positions:ArrayLike = None, rel_abundancies:ArrayLike = None, jsons:str = None):
-        self._positions = positions
-        self._rel_abundancies = rel_abundancies
+        self.positions = positions
+        self.rel_abundancies = rel_abundancies
         if jsons is not None:
             self._jsons = jsons
-            self._positions, self._rel_abundancies = self._from_jsons(jsons)
+            self.positions, self.rel_abundancies = self._from_jsons(jsons)
         else:
             self._jsons = self._to_jsons()
 
@@ -27,7 +27,7 @@ class Profile:
 
     def _from_jsons(self, jsons:str):
         json_dict = json.loads(jsons)
-        return json_dict["_positions"],json_dict["_rel_abundancies"]
+        return json_dict["positions"],json_dict["rel_abundancies"]
 
     @property
     def jsons(self):
@@ -40,7 +40,7 @@ class RTProfile(Profile):
 
     @property
     def frames(self):
-        return self._positions
+        return self.positions
 
 class ScanProfile(Profile):
 
@@ -49,7 +49,7 @@ class ScanProfile(Profile):
 
     @property
     def scans(self):
-        return self._positions
+        return self.positions
 
 class FeatureGenerator(ABC):
     def __init__(self):

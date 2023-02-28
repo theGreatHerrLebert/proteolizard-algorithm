@@ -2,12 +2,11 @@
 import numpy as np
 import pandas as pd
 import sqlite3
-from proteolizardalgo.utility import preprocess_max_quant_sequence
+from proteolizardalgo.utility import preprocess_max_quant_sequence, TokenSequence
 from proteolizardalgo.chemistry import get_mono_isotopic_weight
-
 from enum import Enum
 from abc import ABC, abstractmethod
-
+from typing import Optional, List
 
 class ENZYME(Enum):
     TRYPSIN = 1
@@ -106,6 +105,7 @@ class ProteinSample:
                     pep['sequence'] = '_' + pep['sequence'] + '_'
                     pep['sequence-tokenized'] = preprocess_max_quant_sequence(pep['sequence'])
                     pep['mass-theoretical'] = get_mono_isotopic_weight(pep['sequence-tokenized'])
+                    pep['sequence-tokenized'] = TokenSequence(pep['sequence-tokenized']).jsons
                     r_list.append(pep)
 
         return PeptideDigest(pd.DataFrame(r_list), self.name, enzyme.name)
@@ -116,9 +116,10 @@ class ProteinSample:
 class ProteomicsExperimentDatabaseHandle:
     def __init__(self,path:str):
         self.con = sqlite3.connect(path)
+        self._chunk_size = None
 
     def push(self, table_name:str, data):
-        if "table_name" == "PeptideDigest":
+        if table_name == "PeptideDigest":
             assert isinstance(data, PeptideDigest), "For pushing to table 'PeptideDigest' data type must be `PeptideDigest`"
             df = data.data
         else:
@@ -127,7 +128,7 @@ class ProteomicsExperimentDatabaseHandle:
         df.to_sql(table_name, self.con, if_exists="replace")
 
     def append(self, table_name:str, data):
-        if "table_name" == "Parameter":
+        if table_name == "Parameter":
             assert isinstance(data, ProteomicsExperimentSampleSlice)
             df = table_name.data
         else:
@@ -135,10 +136,22 @@ class ProteomicsExperimentDatabaseHandle:
 
         df.to_sql(table_name, self.con, if_exists="append")
 
+    def load(self, table_name:str, query:Optional[str] = None):
+        if query is None:
+            query = f"SELECT * FROM {table_name}"
+        return pd.read_sql(query,self.con, index_col="index")
+
+    def load_chunks(self, table_name:str, chunk_size: int, query:Optional[str] = None):
+        if query is None:
+            query = f"SELECT * FROM {table_name}"
+        self.__chunk_generator =  pd.read_sql(query,self.con, chunksize=chunk_size, index_col="index")
+        for chunk in self.__chunk_generator:
+            yield(ProteomicsExperimentSampleSlice(table_name, chunk))
+
 class ProteomicsExperimentSampleSlice:
     """
     exposed dataframe of database
     """
-    def __init__(self, input:PeptideDigest):
-        self.data: pd.DataFrame = input.data
-        self._input = input
+    def __init__(self, table_name: str, data:pd.DataFrame):
+        self.data = data
+        self.table_name = table_name

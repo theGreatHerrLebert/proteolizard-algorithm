@@ -7,8 +7,9 @@ import proteolizardalgo.hardware as hardware
 
 class ProteomicsExperiment(ABC):
     def __init__(self, path: str):
-        if not os.path.exists(path):
-            os.mkdir(path)
+        folder = os.path.dirname(path)
+        if not os.path.exists(folder):
+            os.mkdir(folder)
 
         self.database = ProteomicsExperimentDatabaseHandle(path)
         self.loaded_sample = None
@@ -68,6 +69,13 @@ class TimsTOFExperiment(ProteomicsExperiment):
     def __init__(self, path:str):
         super().__init__(path)
 
-    def run(self):
+    def load_sample(self, sample: PeptideDigest):
+        return super().load_sample(sample)
+
+    def run(self, chunk_size: int = 1000):
         # load bulks of data here as dataframe if necessary
-        rt_apex, frame_profile = self.lc_method.run(self.loaded_sample)
+        for data_chunk in self.database.load_chunks("PeptideDigest", chunk_size):
+            self.lc_method.run(data_chunk)
+            self.ionization_method.run(data_chunk)
+            self.ion_mobility_separation_method(data_chunk)
+            self.database.append("Parameter", data_chunk)

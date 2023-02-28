@@ -1,5 +1,6 @@
 import io
 import json
+from typing import List, Optional
 import tensorflow as tf
 import numpy as np
 from numpy.typing import ArrayLike
@@ -12,6 +13,27 @@ from tqdm import tqdm
 from proteolizarddata.data import MzSpectrum
 from proteolizardalgo.hashing import ReferencePattern
 
+
+class TokenSequence:
+
+    def __init__(self, sequence_tokenized: List[str], jsons:Optional[str] = None):
+        if jsons is not None:
+            self.sequence_tokenized = self._from_jsons(jsons)
+            self._jsons = jsons
+        else :
+            self.sequence_tokenized = sequence_tokenized
+            self._jsons = self._to_jsons()
+
+    def _to_jsons(self):
+        json_dict = self.sequence_tokenized
+        return json.dumps(json_dict)
+
+    def _from_jsons(self, jsons:str):
+        return json.loads(jsons)
+
+    @property
+    def jsons(self):
+        return self._jsons
 
 def proteome_from_fasta(path: str) -> pd.DataFrame:
     """
