@@ -1,11 +1,55 @@
 import pandas as pd
 import numpy as np
+from numpy.typing import ArrayLike
+
+import json
 
 from proteolizarddata.data import TimsSlice, TimsFrame, MzSpectrum
 from proteolizardalgo.isotopes import IsotopePatternGenerator, create_initial_feature_distribution
 from proteolizardalgo.utility import gaussian, exp_gaussian
 from abc import ABC, abstractmethod
 
+class Profile:
+
+    def __init__(self,positions:ArrayLike = None, rel_abundancies:ArrayLike = None, jsons:str = None):
+        self._positions = positions
+        self._rel_abundancies = rel_abundancies
+        if jsons is not None:
+            self._jsons = jsons
+            self._positions, self._rel_abundancies = self._from_jsons(jsons)
+        else:
+            self._jsons = self._to_jsons()
+
+    def _to_jsons(self):
+        json_dict = self.__dict__
+        json_dict.pop("jsons",None)
+        return json.dumps(json_dict)
+
+    def _from_jsons(self, jsons:str):
+        json_dict = json.loads(jsons)
+        return json_dict["_positions"],json_dict["_rel_abundancies"]
+
+    @property
+    def jsons(self):
+        return self._jsons
+
+class RTProfile(Profile):
+
+    def __init__(self,frames:ArrayLike = None, rel_abundancies:ArrayLike = None, jsons:str = None):
+        super().__init__(frames, rel_abundancies, jsons)
+
+    @property
+    def frames(self):
+        return self._positions
+
+class ScanProfile(Profile):
+
+    def __init__(self,scans:ArrayLike = None, rel_abundancies:ArrayLike = None, jsons:str = None):
+        super().__init__(scans, rel_abundancies, jsons)
+
+    @property
+    def scans(self):
+        return self._positions
 
 class FeatureGenerator(ABC):
     def __init__(self):

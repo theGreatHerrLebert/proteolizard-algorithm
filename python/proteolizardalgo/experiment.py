@@ -2,13 +2,15 @@ import os
 from abc import ABC, abstractmethod
 import pandas as pd
 
-from proteolizardalgo.proteome import PeptideDigest, ProteomicsExperimentSample
+from proteolizardalgo.proteome import PeptideDigest, ProteomicsExperimentSampleSlice, ProteomicsExperimentDatabaseHandle
 import proteolizardalgo.hardware as hardware
 
 class ProteomicsExperiment(ABC):
     def __init__(self, path: str):
         if not os.path.exists(path):
             os.mkdir(path)
+
+        self.database = ProteomicsExperimentDatabaseHandle(path)
         self.loaded_sample = None
 
         # signal noise discrimination
@@ -54,8 +56,8 @@ class ProteomicsExperiment(ABC):
         self._mz_separation_method = method
 
     @abstractmethod
-    def load_sample(self, sample: ProteomicsExperimentSample):
-        pass
+    def load_sample(self, sample: PeptideDigest):
+        self.database.push("PeptideDigest",sample)
 
     @abstractmethod
     def run(self):
@@ -66,8 +68,6 @@ class TimsTOFExperiment(ProteomicsExperiment):
     def __init__(self, path:str):
         super().__init__(path)
 
-    def load_sample(self, sample: ProteomicsExperimentSample):
-        self.loaded_sample = sample
-
     def run(self):
+        # load bulks of data here as dataframe if necessary
         rt_apex, frame_profile = self.lc_method.run(self.loaded_sample)

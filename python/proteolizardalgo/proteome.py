@@ -1,7 +1,7 @@
 
 import numpy as np
 import pandas as pd
-
+import sqlite3
 from proteolizardalgo.utility import preprocess_max_quant_sequence
 from proteolizardalgo.chemistry import get_mono_isotopic_weight
 
@@ -113,11 +113,31 @@ class ProteinSample:
     def __repr__(self):
         return f'ProteinSample(Organism: {self.name.name})'
 
+class ProteomicsExperimentDatabaseHandle:
+    def __init__(self,path:str):
+        self.con = sqlite3.connect(path)
 
-class ProteomicsExperimentSample:
+    def push(self, table_name:str, data):
+        if "table_name" == "PeptideDigest":
+            assert isinstance(data, PeptideDigest), "For pushing to table 'PeptideDigest' data type must be `PeptideDigest`"
+            df = data.data
+        else:
+            raise ValueError("This Table does not exist and is not supported")
+
+        df.to_sql(table_name, self.con, if_exists="replace")
+
+    def append(self, table_name:str, data):
+        if "table_name" == "Parameter":
+            assert isinstance(data, ProteomicsExperimentSampleSlice)
+            df = table_name.data
+        else:
+            raise ValueError("This Table does not exist and is not supported")
+
+        df.to_sql(table_name, self.con, if_exists="append")
+
+class ProteomicsExperimentSampleSlice:
     """
-    A proteomics experiment could analyze e.g. whole proteins or
-    peptide digestions.
+    exposed dataframe of database
     """
     def __init__(self, input:PeptideDigest):
         self.data: pd.DataFrame = input.data

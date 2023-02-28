@@ -6,7 +6,7 @@ import pandas as pd
 
 from proteolizardalgo.chemistry import  ccs_to_one_over_reduced_mobility
 import proteolizardalgo.hardware_models as models
-from proteolizardalgo.proteome import ProteomicsExperimentSample
+from proteolizardalgo.proteome import ProteomicsExperimentSampleSlice
 
 class Chromatography(ABC):
     def __init__(self):
@@ -52,14 +52,14 @@ class Chromatography(ABC):
         self._profile_model = model
 
     @abstractmethod
-    def run(self, sample: ProteomicsExperimentSample):
+    def run(self, sample: ProteomicsExperimentSampleSlice):
         pass
 
 class LiquidChromatography(Chromatography):
     def __init__(self):
         super().__init__()
 
-    def run(self, sample: ProteomicsExperimentSample):
+    def run(self, sample: ProteomicsExperimentSampleSlice):
         retention_time_apex = self._apex_model.get_retention_times(sample)
         retention_profile = self._profile_model.get_retention_profile(sample)
         return (retention_time_apex, retention_profile)
@@ -77,14 +77,14 @@ class IonSource(ABC):
         self._ionization_model = model
 
     @abstractmethod
-    def ionize(self, sample: ProteomicsExperimentSample):
+    def ionize(self, sample: ProteomicsExperimentSampleSlice):
         pass
 
 class ElectroSpray(IonSource):
     def __init__(self):
         super().__init__()
 
-    def ionize(self, sample: ProteomicsExperimentSample):
+    def ionize(self, sample: ProteomicsExperimentSampleSlice):
         pass
 
 
@@ -128,7 +128,7 @@ class IonMobilitySeparation(ABC):
         self._profile_model = model
 
     @abstractmethod
-    def run(self, sample: ProteomicsExperimentSample):
+    def run(self, sample: ProteomicsExperimentSampleSlice):
         pass
 
 class TrappedIon(IonMobilitySeparation):
@@ -136,7 +136,7 @@ class TrappedIon(IonMobilitySeparation):
     def __init__(self):
         super().__init__()
 
-    def run(self, sample: ProteomicsExperimentSample):
+    def run(self, sample: ProteomicsExperimentSampleSlice):
         pass
 
 
@@ -153,12 +153,12 @@ class MzSeparation(ABC):
         self._model = model
 
     @abstractmethod
-    def run(self, sample: ProteomicsExperimentSample):
+    def run(self, sample: ProteomicsExperimentSampleSlice):
         pass
 
 class TOF(MzSeparation):
     def __init__(self):
         super().__init__()
 
-    def run(self, sample: ProteomicsExperimentSample):
+    def run(self, sample: ProteomicsExperimentSampleSlice):
         pass
