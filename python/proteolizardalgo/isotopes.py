@@ -54,7 +54,7 @@ def weight(mass: float, peak_nums: ArrayLike, normalize: bool = True):
 
 
 @numba.jit(nopython=True)
-def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: int, step_size:float, add_detection_noise: bool = True, mass_neutron: float = MASS_NEUTRON):
+def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: int, step_size:float, add_detection_noise: bool = False, mass_neutron: float = MASS_NEUTRON):
     """
     :param mass_neutron:
     :param x:
@@ -135,7 +135,7 @@ def numba_ion_sampler(mass: float, charge: int, sigma: ArrayLike, k: int, ion_co
             comps[idx] = comp
             devs[idx] = sigma[comp] * devs_std[idx]
 
-        mz = ((comps*MASS_NEUTRON) + mass + MASS_PROTON) / charge + devs
+        mz = ((comps*MASS_NEUTRON) + mass) / charge + MASS_PROTON + devs
         i = np.ones_like(mz) * intensity_per_ion
         return (mz, i.astype(np.int64))
 
