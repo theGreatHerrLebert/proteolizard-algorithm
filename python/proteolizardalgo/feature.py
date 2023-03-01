@@ -8,15 +8,16 @@ from proteolizarddata.data import TimsSlice, TimsFrame, MzSpectrum
 from proteolizardalgo.isotopes import IsotopePatternGenerator, create_initial_feature_distribution
 from proteolizardalgo.utility import gaussian, exp_gaussian
 from abc import ABC, abstractmethod
-
+from typing import Optional, Dict
 class Profile:
 
-    def __init__(self,positions:ArrayLike = None, rel_abundancies:ArrayLike = None, jsons:str = None):
+    def __init__(self,positions:Optional[ArrayLike] = None, rel_abundancies:Optional[ArrayLike] = None, model_params: Optional[Dict] = None, jsons:Optional[str] = None):
         self.positions = positions
         self.rel_abundancies = rel_abundancies
+        self.model_params = model_params
         if jsons is not None:
             self._jsons = jsons
-            self.positions, self.rel_abundancies = self._from_jsons(jsons)
+            self.positions, self.rel_abundancies, self.model_params = self._from_jsons(jsons)
         else:
             self._jsons = self._to_jsons()
 
@@ -27,7 +28,7 @@ class Profile:
 
     def _from_jsons(self, jsons:str):
         json_dict = json.loads(jsons)
-        return json_dict["positions"],json_dict["rel_abundancies"]
+        return json_dict["positions"],json_dict["rel_abundancies"],json_dict["model_params"]
 
     @property
     def jsons(self):
@@ -35,7 +36,7 @@ class Profile:
 
 class RTProfile(Profile):
 
-    def __init__(self,frames:ArrayLike = None, rel_abundancies:ArrayLike = None, jsons:str = None):
+    def __init__(self,frames:Optional[ArrayLike] = None, rel_abundancies:Optional[ArrayLike] = None, model_params: Optional[Dict] = None, jsons:Optional[str] = None):
         super().__init__(frames, rel_abundancies, jsons)
 
     @property
@@ -44,7 +45,7 @@ class RTProfile(Profile):
 
 class ScanProfile(Profile):
 
-    def __init__(self,scans:ArrayLike = None, rel_abundancies:ArrayLike = None, jsons:str = None):
+    def __init__(self,scans:Optional[ArrayLike] = None, rel_abundancies:Optional[ArrayLike] = None, model_params: Optional[Dict] = None, jsons:Optional[str] = None):
         super().__init__(scans, rel_abundancies, jsons)
 
     @property

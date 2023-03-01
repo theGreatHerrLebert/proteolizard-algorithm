@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 import pandas as pd
 
 from proteolizardalgo.proteome import PeptideDigest, ProteomicsExperimentSampleSlice, ProteomicsExperimentDatabaseHandle
-import proteolizardalgo.hardware as hardware
+import proteolizardalgo.hardware_models as hardware
 
 class ProteomicsExperiment(ABC):
     def __init__(self, path: str):
@@ -77,5 +77,5 @@ class TimsTOFExperiment(ProteomicsExperiment):
         for data_chunk in self.database.load_chunks("PeptideDigest", chunk_size):
             self.lc_method.run(data_chunk)
             self.ionization_method.run(data_chunk)
-            self.ion_mobility_separation_method(data_chunk)
-            self.database.append("Parameter", data_chunk)
+            self.ion_mobility_separation_method.run(data_chunk)
+            self.database.append("Simulation", data_chunk)

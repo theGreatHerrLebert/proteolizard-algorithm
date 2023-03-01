@@ -128,7 +128,7 @@ class ProteomicsExperimentDatabaseHandle:
         df.to_sql(table_name, self.con, if_exists="replace")
 
     def append(self, table_name:str, data):
-        if table_name == "Parameter":
+        if table_name == "Simulation":
             assert isinstance(data, ProteomicsExperimentSampleSlice)
             df = table_name.data
         else:
@@ -155,3 +155,11 @@ class ProteomicsExperimentSampleSlice:
     def __init__(self, table_name: str, data:pd.DataFrame):
         self.data = data
         self.table_name = table_name
+
+    def add_simulation(self, simulation_name:str, simulation_data):
+        if simulation_name == "simulated_irt_apex":
+            self.data[simulation_name] = simulation_data
+        elif simulation_name == "simulated_frame_apex":
+            self.data[simulation_name] = simulation_data
+        elif simulation_name == "simulated_frame_profile":
+            self.data["simulation_name"] = simulation_data

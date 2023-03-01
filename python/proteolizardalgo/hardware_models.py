@@ -1,18 +1,39 @@
+from __future__ import annotations
 from abc import ABC, abstractmethod
+from typing import List
 
 import tensorflow as tf
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 import pandas as pd
 
 from proteolizardalgo.chemistry import  ccs_to_one_over_reduced_mobility
 from proteolizardalgo.proteome import ProteomicsExperimentSampleSlice
+from proteolizardalgo.feature import RTProfile, ScanProfile
+from proteolizardalgo.utility import ExponentialGaussianDistribution as emg
+class Device(ABC):
+    def __init__(self, name:str):
+        self.name = name
 
-class Chromatography(ABC):
+    @abstractmethod
+    def run(self, sample: ProteomicsExperimentSampleSlice):
+        pass
+
+class Model(ABC):
     def __init__(self):
+        pass
+
+    @abstractmethod
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: Device):
+        pass
+
+class Chromatography(Device):
+    def __init__(self, name:str="ChromatographyDevice"):
+        super().__init__(name)
         self._apex_model = None
         self._profile_model = None
-        self._frame_length = None
-        self._gradient_length = None
+        self._frame_length = 1200
+        self._gradient_length = 120*60*1000 # 120 minutes in miliseconds
 
     @property
     def frame_length(self):
@@ -39,7 +60,7 @@ class Chromatography(ABC):
         return self._apex_model
 
     @apex_model.setter
-    def apex_model(self, model:models.ChromatographyApexModel):
+    def apex_model(self, model: ChromatographyApexModel):
         self._apex_model = model
 
     @property
@@ -47,42 +68,97 @@ class Chromatography(ABC):
         return self._profile_model
 
     @profile_model.setter
-    def profile_model(self, model:models.ChromatographyProfileModel):
+    def profile_model(self, model:ChromatographyProfileModel):
         self._profile_model = model
-
-    @abstractmethod
-    def run(self, sample: ProteomicsExperimentSampleSlice):
-        pass
 
     @abstractmethod
     def irt_to_frame_id(self):
         pass
 
 class LiquidChromatography(Chromatography):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, name: str = "LiquidChromatographyDevice"):
+        super().__init__(name)
 
     def run(self, sample: ProteomicsExperimentSampleSlice):
         # retention time apex simulation
-        retention_time_apex = self._apex_model.get_retention_times(sample)
+        retention_time_apex = self._apex_model.simulate(sample, self)
         # in irt
-        sample.add_prediction("retention_time_apex", retention_time_apex)
+        sample.add_simulation("simulated_irt_apex", retention_time_apex)
         # in frame id
-        sample.add_prediction("frame_apex", self.irt_to_frame_id(retention_time_apex))
+        sample.add_simulation("simulated_frame_apex", self.irt_to_frame_id(retention_time_apex))
 
         # profile simulation
-        retention_profile = self._profile_model.get_retention_profile(sample)
-        sample.add_prediction("retention_profile", retention_profile)
+        retention_profile = self._profile_model.simulate(sample, self)
+        sample.add_simulation("simulated_frame_profile", retention_profile)
 
-    def irt_to_frame_id_vector( irt, max_frame=66000, irt_min=-30, irt_max=170):
+    def irt_to_frame_id(self,  irt, max_frame=66000, irt_min=-30, irt_max=170):
         spacing = np.linspace(irt_min, irt_max, max_frame).reshape((-1,1)) + 1
         irt = irt.reshape((1,-1))
         return np.argmin(np.abs(spacing - irt), axis=0)
 
 
-
-class IonSource(ABC):
+class ChromatographyApexModel(Model):
     def __init__(self):
+        self._device = None
+
+    @abstractmethod
+    def simulate(self, input: ProteomicsExperimentSampleSlice, device: Chromatography) -> NDArray[np.float64]:
+        pass
+
+class ChromatographyProfileModel(Model):
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def simulate(self, input: ProteomicsExperimentSampleSlice, device: Chromatography) -> List[RTProfile]:
+        pass
+
+class EMGChromatographyProfileModel(ChromatographyProfileModel):
+
+    def __init__(self):
+        super().__init__()
+        self.sigma = 1
+        self.lam = 1
+
+    def simulate(self, input: ProteomicsExperimentSampleSlice, device: Chromatography) -> List[RTProfile]:
+        mus = input.data["simulated_irt_apex"].values
+        frames = input.data["simulated_frame_apex"].values
+        frame_length = device.frame_length
+        for mu, frame in zip(mus,frames):
+
+
+class NeuralChromatographyApex(ChromatographyApexModel):
+
+    def __init__(self, model_path: str, tokenizer: tf.keras.preprocessing.text.Tokenizer):
+        super().__init__()
+        self.model = tf.keras.models.load_model(model_path)
+        self.tokenizer = tokenizer
+
+    def sequences_to_tokens(self, sequences: np.array) -> np.array:
+        print('tokenizing sequences...')
+        seq_lists = [list(s) for s in sequences]
+        tokens = self.tokenizer.texts_to_sequences(seq_lists)
+        tokens_padded = tf.keras.preprocessing.sequence.pad_sequences(tokens, 50, padding='post')
+        return tokens_padded
+
+    def sequences_tf_dataset(self, sequences: np.array, batched: bool = True, bs: int = 2048) -> tf.data.Dataset:
+        tokens = self.sequences_to_tokens(sequences)
+        print('generating tf dataset...')
+        pseudo_target = np.expand_dims(np.zeros_like(tokens[:, 0]), axis=1)
+
+        if batched:
+            return tf.data.Dataset.from_tensor_slices((tokens, pseudo_target)).batch(bs)
+        return tf.data.Dataset.from_tensor_slices((tokens, pseudo_target))
+
+    def simulate(self, input: ProteomicsExperimentSampleSlice, device: Chromatography) ->  NDArray[np.float64]:
+        data = input.data
+        ds = self.sequences_tf_dataset(data['sequence-tokenized'])
+        print('predicting irts...')
+        return self.model.predict(ds)
+
+class IonSource(Device):
+    def __init__(self, name:str ="IonizationDevice"):
+        super().__init__(name)
         self._ionization_model = None
 
     @property
@@ -90,23 +166,60 @@ class IonSource(ABC):
         return self._ionization_model
 
     @ionization_model.setter
-    def ionization_model(self, model: models.IonizationModel):
+    def ionization_model(self, model: IonizationModel):
         self._ionization_model = model
 
     @abstractmethod
-    def ionize(self, sample: ProteomicsExperimentSampleSlice):
+    def run(self, sample: ProteomicsExperimentSampleSlice):
         pass
 
 class ElectroSpray(IonSource):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, name:str ="ElectrosprayDevice"):
+        super().__init__(name)
 
-    def ionize(self, sample: ProteomicsExperimentSampleSlice):
+    def run(self, sample: ProteomicsExperimentSampleSlice):
         pass
 
-
-class IonMobilitySeparation(ABC):
+class IonizationModel(Model):
     def __init__(self):
+        pass
+
+    @abstractmethod
+    def simulate(self, input:ProteomicsExperimentSampleSlice, device: IonSource) -> NDArray:
+        pass
+
+class RandomIonSource(IonizationModel):
+    def __init__(self):
+        super().__init__()
+        self.charge_probabilities =  np.array([0.1, 0.5, 0.3, 0.1])
+        self.allowed_charges =  np.array([1, 2, 3, 4], dtype=np.int8)
+
+    @property
+    def allowed_charges(self):
+        return self.charge_distribution
+
+    @allowed_charges.setter
+    def allowed_charge(self, charges: ArrayLike):
+        self.allowed_charges = np.asarray(charges, dtype=np.int8)
+
+    @property
+    def charge_probabilities(self):
+        return self.charge_probabilities
+
+    @charge_probabilities.setter
+    def charge_probabilites(self, probabilities: ArrayLike):
+        self.charge_probabilities = np.asarray(probabilities)
+
+    def simulate(self, ProteomicsExperimentSampleSlice, device: IonSource) -> NDArray[np.int8]:
+        if self.charge_probabilities.shape != self.allowed_charges.shape:
+            raise ValueError("Number of allowed charges must fit to number of probabilites")
+
+        data = ProteomicsExperimentSampleSlice.data
+        return np.random.choice(self.allowed_charges, data.shape[0], p=self.charge_probabilites)
+
+class IonMobilitySeparation(Device):
+    def __init__(self, name:str = "IonMobilityDevice"):
+        super().__init__(name)
         self._apex_model = None
         self._profile_model = None
         self._num_scans = None
@@ -133,7 +246,7 @@ class IonMobilitySeparation(ABC):
         return self._apex_model
 
     @apex_model.setter
-    def apex_model(self, model: models.IonMobilityApexModel):
+    def apex_model(self, model: IonMobilityApexModel):
         self._apex_model = model
 
     @property
@@ -141,7 +254,7 @@ class IonMobilitySeparation(ABC):
         return self._profile_model
 
     @profile_model.setter
-    def profile_model(self, model: models.IonMobilityProfileModel):
+    def profile_model(self, model: IonMobilityProfileModel):
         self._profile_model = model
 
     @abstractmethod
@@ -154,7 +267,7 @@ class IonMobilitySeparation(ABC):
 
 class TrappedIon(IonMobilitySeparation):
 
-    def __init__(self):
+    def __init__(self, name:str = "TrappedIonMobilitySeparation"):
         super().__init__()
 
     def run(self, sample: ProteomicsExperimentSampleSlice):
@@ -164,98 +277,21 @@ class TrappedIon(IonMobilitySeparation):
         return int(np.round(inv_mob * slope + intercept))
 
 
-class MzSeparation(ABC):
-    def __init__(self):
-        self._model = None
-
-    @property
-    def model(self):
-        return self._model
-
-    @model.setter
-    def model(self, model: models.MzSeparationModel):
-        self._model = model
-
-    @abstractmethod
-    def run(self, sample: ProteomicsExperimentSampleSlice):
-        pass
-
-class TOF(MzSeparation):
-    def __init__(self):
-        super().__init__()
-
-    def run(self, sample: ProteomicsExperimentSampleSlice):
-        pass
-class ChromatographyApexModel(ABC):
+class IonMobilityApexModel(Model):
     def __init__(self):
         pass
 
     @abstractmethod
-    def get_retention_times(self, input: ProteomicsExperimentSampleSlice):
-        pass
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> NDArray[np.float64]:
+        return super().simulate(sample, device)
 
-class ChromatographyProfileModel(ABC):
+class IonMobilityProfileModel(Model):
     def __init__(self):
         pass
 
     @abstractmethod
-    def get_retention_profile(self, input: ProteomicsExperimentSampleSlice):
-        pass
-
-class DummyChromatographyProfileModel(ChromatographyProfileModel):
-
-    def __init__(self):
-        super().__init__()
-
-    def get_retention_profile(self, input: ProteomicsExperimentSampleSlice):
-        return None
-
-
-class NeuralChromatographyApex(ChromatographyApexModel):
-
-    def __init__(self, model_path: str, tokenizer: tf.keras.preprocessing.text.Tokenizer):
-        super().__init__()
-        self.model = tf.keras.models.load_model(model_path)
-        self.tokenizer = tokenizer
-
-    def sequences_to_tokens(self, sequences: np.array) -> np.array:
-        print('tokenizing sequences...')
-        seq_lists = [list(s) for s in sequences]
-        tokens = self.tokenizer.texts_to_sequences(seq_lists)
-        tokens_padded = tf.keras.preprocessing.sequence.pad_sequences(tokens, 50, padding='post')
-        return tokens_padded
-
-    def sequences_tf_dataset(self, sequences: np.array, batched: bool = True, bs: int = 2048) -> tf.data.Dataset:
-        tokens = self.sequences_to_tokens(sequences)
-        print('generating tf dataset...')
-        pseudo_target = np.expand_dims(np.zeros_like(tokens[:, 0]), axis=1)
-
-        if batched:
-            return tf.data.Dataset.from_tensor_slices((tokens, pseudo_target)).batch(bs)
-        return tf.data.Dataset.from_tensor_slices((tokens, pseudo_target))
-
-    def get_retention_times(self, input: ProteomicsExperimentSampleSlice) -> np.array:
-        data = input.data
-        ds = self.sequences_tf_dataset(data['sequence-tokenized'])
-        print('predicting irts...')
-        return self.model.predict(ds)
-
-
-class IonMobilityApexModel(ABC):
-    def __init__(self):
-        pass
-
-    @abstractmethod
-    def get_mobilities_and_ccs(self, input: ProteomicsExperimentSampleSlice):
-        pass
-
-class IonMobilityProfileModel(ABC):
-    def __init__(self):
-        pass
-
-    @abstractmethod
-    def get_mobility_profile(self, input: ProteomicsExperimentSampleSlice):
-        pass
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> NDArray:
+        return super().simulate(sample, device)
 
 class NeuralMobilityApex(IonMobilityApexModel):
 
@@ -283,7 +319,7 @@ class NeuralMobilityApex(IonMobilityApexModel):
             return tf.data.Dataset.from_tensor_slices(((mz, c, tokens), pseudo_target)).batch(bs)
         return tf.data.Dataset.from_tensor_slices(((mz, c, tokens), pseudo_target))
 
-    def get_mobilities_and_ccs(self, input: ProteomicsExperimentSampleSlice) -> np.array:
+    def simulate(self, input: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> NDArray:
         data = input.data
         ds = self.sequences_tf_dataset(data['mz'], data['charge'], data['sequence-tokenized'])
 
@@ -299,36 +335,44 @@ class DummyIonMobilityProfileModel(IonMobilityProfileModel):
     def __init__(self):
         super().__init__()
 
-    def get_mobility_profile(self, input: ProteomicsExperimentSampleSlice):
-        return None
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> NDArray:
+        return super().simulate(sample, device)
 
-class IonizationModel(ABC):
+class MzSeparation(Device):
+    def __init__(self, name:str = "MassSpectrometer"):
+        super().__init__(name)
+        self._model = None
+
+    @property
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, model: MzSeparationModel):
+        self._model = model
+
+    @abstractmethod
+    def run(self, sample: ProteomicsExperimentSampleSlice):
+        pass
+
+class TOF(MzSeparation):
+    def __init__(self, name:str = "TimeOfFlightMassSpectrometer"):
+        super().__init__(name)
+
+    def run(self, sample: ProteomicsExperimentSampleSlice):
+        pass
+
+class MzSeparationModel(Model):
     def __init__(self):
         pass
 
     @abstractmethod
-    def ionize(self, input:ProteomicsExperimentSampleSlice):
-        pass
-
-class RandomIonSource(IonizationModel):
-    def __init__(self):
-        super().__init__()
-
-    def ionize(self, ProteomicsExperimentSampleSlice, allowed_charges: list = [1, 2, 3, 4], p: list = [0.1, 0.5, 0.3, 0.1]):
-        data = ProteomicsExperimentSampleSlice.data
-        return np.random.choice(allowed_charges, data.shape[0], p=p)
-
-class MzSeparationModel(ABC):
-    def __init__(self):
-        pass
-
-    @abstractmethod
-    def get_spectrum(self):
-        pass
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: MzSeparation):
+        return super().simulate(sample, device)
 
 class TOFModel(MzSeparationModel):
     def __init__(self):
         super().__init__()
 
-    def get_spectrum(self):
-        pass
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: MzSeparation):
+        return super().simulate(sample, device)
