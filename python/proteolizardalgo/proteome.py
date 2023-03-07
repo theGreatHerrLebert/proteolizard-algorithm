@@ -1,7 +1,8 @@
-
+from __future__ import annotations
 import numpy as np
 import pandas as pd
 import sqlite3
+from proteolizardalgo.feature import RTProfile, ScanProfile, ChargeProfile
 from proteolizardalgo.utility import preprocess_max_quant_sequence, TokenSequence
 from proteolizardalgo.chemistry import get_mono_isotopic_weight
 from enum import Enum
@@ -127,10 +128,10 @@ class ProteomicsExperimentDatabaseHandle:
 
         df.to_sql(table_name, self.con, if_exists="replace")
 
-    def append(self, table_name:str, data):
+    def append(self, table_name:str, data_slice: ProteomicsExperimentSampleSlice):
         if table_name == "Simulation":
-            assert isinstance(data, ProteomicsExperimentSampleSlice)
-            df = table_name.data
+            assert isinstance(data_slice, ProteomicsExperimentSampleSlice)
+            df = self._make_sql_compatible(table_name.data)
         else:
             raise ValueError("This Table does not exist and is not supported")
 
@@ -148,6 +149,15 @@ class ProteomicsExperimentDatabaseHandle:
         for chunk in self.__chunk_generator:
             yield(ProteomicsExperimentSampleSlice(table_name, chunk))
 
+    @staticmethod
+    def _make_sql_compatible(column):
+        if column.size < 1:
+            return
+        if isinstance(column[0], (RTProfile,ScanProfile,ChargeProfile)):
+            return column.apply(lambda x: x.jsons)
+        else:
+            return column
+
 class ProteomicsExperimentSampleSlice:
     """
     exposed dataframe of database
@@ -157,9 +167,14 @@ class ProteomicsExperimentSampleSlice:
         self.table_name = table_name
 
     def add_simulation(self, simulation_name:str, simulation_data):
-        if simulation_name == "simulated_irt_apex":
+        accepted_column_names = ["simulated_irt_apex",
+                                 "simulated_frame_apex",
+                                 "simulated_frame_profile",
+                                 "simulated_charge_profile",
+                                 "simulated_scan_apex",
+                                 "simulated_scan_profile",
+                                 ]
+        if simulation_name not in accepted_column_names:
+            raise ValueError(f"Simulation name '{simulation_name}' is not defined")
+        else:
             self.data[simulation_name] = simulation_data
-        elif simulation_name == "simulated_frame_apex":
-            self.data[simulation_name] = simulation_data
-        elif simulation_name == "simulated_frame_profile":
-            self.data["simulation_name"] = simulation_data

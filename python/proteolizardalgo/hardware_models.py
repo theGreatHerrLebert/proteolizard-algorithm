@@ -6,11 +6,14 @@ import tensorflow as tf
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 import pandas as pd
+from scipy.stats import exponnorm, norm
 
 from proteolizardalgo.chemistry import  ccs_to_one_over_reduced_mobility
 from proteolizardalgo.proteome import ProteomicsExperimentSampleSlice
-from proteolizardalgo.feature import RTProfile, ScanProfile
+from proteolizardalgo.feature import RTProfile, ScanProfile, ChargeProfile
 from proteolizardalgo.utility import ExponentialGaussianDistribution as emg
+
+
 class Device(ABC):
     def __init__(self, name:str):
         self.name = name
@@ -32,6 +35,7 @@ class Chromatography(Device):
         super().__init__(name)
         self._apex_model = None
         self._profile_model = None
+        self._irt_to_rt_converter = None
         self._frame_length = 1200
         self._gradient_length = 120*60*1000 # 120 minutes in miliseconds
 
@@ -67,13 +71,35 @@ class Chromatography(Device):
     def profile_model(self):
         return self._profile_model
 
+    @property
+    def irt_to_rt_converter(self):
+        return self._irt_to_rt_converter
+
+    @irt_to_rt_converter.setter
+    def irt_to_rt_converter(self, converter:callable):
+        self._irt_to_rt_converter = converter
+
     @profile_model.setter
     def profile_model(self, model:ChromatographyProfileModel):
         self._profile_model = model
 
+    def irt_to_frame_id(self, irt: float):
+        return self.rt_to_frame_id(self.irt_to_rt(irt))
+
     @abstractmethod
-    def irt_to_frame_id(self):
+    def rt_to_frame_id(self, rt: float):
         pass
+
+    def irt_to_rt(self, irt):
+        return self._irt_to_rt_converter(irt)
+
+    def frame_time_interval(self, frame_id:ArrayLike):
+        s = (frame_id-1)*self.frame_length
+        e = frame_id*self.frame_length
+        return np.stack([s, e], axis = 1)
+
+    def frame_time_middle(self, frame_id: ArrayLike):
+        return np.mean(self.frame_time_interval(frame_id),axis=1)
 
 class LiquidChromatography(Chromatography):
     def __init__(self, name: str = "LiquidChromatographyDevice"):
@@ -82,20 +108,21 @@ class LiquidChromatography(Chromatography):
     def run(self, sample: ProteomicsExperimentSampleSlice):
         # retention time apex simulation
         retention_time_apex = self._apex_model.simulate(sample, self)
-        # in irt
+        # in irt and rt
         sample.add_simulation("simulated_irt_apex", retention_time_apex)
         # in frame id
         sample.add_simulation("simulated_frame_apex", self.irt_to_frame_id(retention_time_apex))
 
         # profile simulation
+
         retention_profile = self._profile_model.simulate(sample, self)
         sample.add_simulation("simulated_frame_profile", retention_profile)
 
-    def irt_to_frame_id(self,  irt, max_frame=66000, irt_min=-30, irt_max=170):
-        spacing = np.linspace(irt_min, irt_max, max_frame).reshape((-1,1)) + 1
-        irt = irt.reshape((1,-1))
-        return np.argmin(np.abs(spacing - irt), axis=0)
-
+    def rt_to_frame_id(self,  rt_seconds: ArrayLike):
+        rt_seconds = np.asarray(rt_seconds)
+        # first frame is completed not at 0 but at frame_length
+        frame_id = (rt_seconds/self.frame_length*1000).astype(np.int64)+1
+        return frame_id
 
 class ChromatographyApexModel(Model):
     def __init__(self):
@@ -117,14 +144,37 @@ class EMGChromatographyProfileModel(ChromatographyProfileModel):
 
     def __init__(self):
         super().__init__()
-        self.sigma = 1
-        self.lam = 1
 
     def simulate(self, input: ProteomicsExperimentSampleSlice, device: Chromatography) -> List[RTProfile]:
         mus = input.data["simulated_irt_apex"].values
         frames = input.data["simulated_frame_apex"].values
-        frame_length = device.frame_length
+        ϵ = device.frame_length
+        profile_list = []
         for mu, frame in zip(mus,frames):
+            σ = 1 # must be sampled
+            λ = 1 # must be sampled
+            K = 1/(σ*λ)
+            μ = device.irt_to_rt(mu)
+            model_params = { "σ":σ,
+                             "λ":λ,
+                             "μ":μ,
+                             "name":"EMG"
+                            }
+
+            emg = exponnorm(loc=μ, scale=σ, K = K)
+            # start and end value (in retention times)
+            s_rt, e_rt = emg.ppf([0.05,0.95])
+            # as frames
+            s_frame, e_frame = device.rt_to_frame_id(s_rt), device.rt_to_frame_id(e_rt)
+
+            profile_frames = np.arange(s_frame,e_frame+1)
+            profile_middle_times = device.frame_time_middle(profile_frames)
+            profile_rel_intensities = emg.pdf(profile_middle_times)* ϵ
+
+            profile_list.append(RTProfile(profile_frames,profile_rel_intensities,model_params))
+        return profile_list
+
+
 
 
 class NeuralChromatographyApex(ChromatographyApexModel):
@@ -178,7 +228,8 @@ class ElectroSpray(IonSource):
         super().__init__(name)
 
     def run(self, sample: ProteomicsExperimentSampleSlice):
-        pass
+        charge_profiles = self.ionization_model.simulate(sample, self)
+        sample.add_simulation("simulated_charge_profile", charge_profiles)
 
 class IonizationModel(Model):
     def __init__(self):
@@ -191,32 +242,36 @@ class IonizationModel(Model):
 class RandomIonSource(IonizationModel):
     def __init__(self):
         super().__init__()
-        self.charge_probabilities =  np.array([0.1, 0.5, 0.3, 0.1])
-        self.allowed_charges =  np.array([1, 2, 3, 4], dtype=np.int8)
+        self._charge_probabilities =  np.array([0.1, 0.5, 0.3, 0.1])
+        self._allowed_charges =  np.array([1, 2, 3, 4], dtype=np.int8)
 
     @property
     def allowed_charges(self):
-        return self.charge_distribution
+        return self._allowed_charges
 
     @allowed_charges.setter
     def allowed_charge(self, charges: ArrayLike):
-        self.allowed_charges = np.asarray(charges, dtype=np.int8)
+        self._allowed_charges = np.asarray(charges, dtype=np.int8)
 
     @property
     def charge_probabilities(self):
-        return self.charge_probabilities
+        return self._charge_probabilities
 
     @charge_probabilities.setter
-    def charge_probabilites(self, probabilities: ArrayLike):
-        self.charge_probabilities = np.asarray(probabilities)
+    def charge_probabilities(self, probabilities: ArrayLike):
+        self._charge_probabilities = np.asarray(probabilities)
 
-    def simulate(self, ProteomicsExperimentSampleSlice, device: IonSource) -> NDArray[np.int8]:
+    def simulate(self, ProteomicsExperimentSampleSlice, device: IonSource) -> List[ChargeProfile]:
         if self.charge_probabilities.shape != self.allowed_charges.shape:
-            raise ValueError("Number of allowed charges must fit to number of probabilites")
+            raise ValueError("Number of allowed charges must fit to number of probabilities")
 
         data = ProteomicsExperimentSampleSlice.data
-        return np.random.choice(self.allowed_charges, data.shape[0], p=self.charge_probabilites)
-
+        charge = np.random.choice(self.allowed_charges, data.shape[0], p=self.charge_probabilities)
+        rel_intensity = np.ones_like(charge)
+        charge_profiles = []
+        for c,i in zip(charge, rel_intensity):
+            charge_profiles.append(ChargeProfile([c],[i],model_params={"name":"RandomIonSource"}))
+        return charge_profiles
 class IonMobilitySeparation(Device):
     def __init__(self, name:str = "IonMobilityDevice"):
         super().__init__(name)
@@ -271,7 +326,14 @@ class TrappedIon(IonMobilitySeparation):
         super().__init__()
 
     def run(self, sample: ProteomicsExperimentSampleSlice):
-        pass
+        # scan apex simulation
+        scan_apex = self._apex_model.simulate(sample, self)
+        # in irt and rt
+        sample.add_simulation("simulated_scan_apex", scan_apex)
+
+        # scan profile simulation
+        scan_profile = self._profile_model.simulate(sample, self)
+        sample.add_simulation("simulated_scan_profile", scan_profile)
 
     def im_to_scan(self, inv_mob, slope=-880.57513791, intercept=1454.29035506):
         return int(np.round(inv_mob * slope + intercept))
@@ -321,6 +383,7 @@ class NeuralMobilityApex(IonMobilityApexModel):
 
     def simulate(self, input: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> NDArray:
         data = input.data
+
         ds = self.sequences_tf_dataset(data['mz'], data['charge'], data['sequence-tokenized'])
 
         mz = data['mz'].values
@@ -329,14 +392,38 @@ class NeuralMobilityApex(IonMobilityApexModel):
         ccs, _ = self.model.predict(ds)
         one_over_k0 = ccs_to_one_over_reduced_mobility(np.squeeze(ccs), mz, data['charge'].values)
 
-        return np.c_[ccs, one_over_k0]
+        scans = device.im_to_scan(one_over_k0)
+        return scans
 
-class DummyIonMobilityProfileModel(IonMobilityProfileModel):
+class NormalIonMobilityProfileModel(IonMobilityProfileModel):
     def __init__(self):
         super().__init__()
 
-    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> NDArray:
-        return super().simulate(sample, device)
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> List[ScanProfile]:
+        mus = input.data["simulated_scan_apex"].values
+        ϵ = device.scan_time
+        profile_list = []
+        for μ in mus:
+            σ = 1 # must be sampled
+
+            model_params = { "σ":σ,
+                             "μ":μ,
+                             "name":"NORMAL"
+                            }
+
+            normal = norm(loc=μ, scale=σ)
+            # start and end value (in retention times)
+            s_rt, e_rt = normal.ppf([0.05,0.95])
+            # as frames
+            s_scan, e_scan = int(s_rt), int(e_rt)
+
+            profile_scans = np.arange(s_scan,e_scan+1)
+            profile_middle_times = profile_scans + 0.5
+            profile_rel_intensities = normal.pdf(profile_middle_times)* ϵ
+
+            profile_list.append(ScanProfile(profile_scans,profile_rel_intensities,model_params))
+        return profile_list
+
 
 class MzSeparation(Device):
     def __init__(self, name:str = "MassSpectrometer"):

@@ -12,8 +12,8 @@ from typing import Optional, Dict
 class Profile:
 
     def __init__(self,positions:Optional[ArrayLike] = None, rel_abundancies:Optional[ArrayLike] = None, model_params: Optional[Dict] = None, jsons:Optional[str] = None):
-        self.positions = positions
-        self.rel_abundancies = rel_abundancies
+        self.positions = np.asarray(positions)
+        self.rel_abundancies = np.asarray(rel_abundancies)
         self.model_params = model_params
         if jsons is not None:
             self._jsons = jsons
@@ -22,8 +22,9 @@ class Profile:
             self._jsons = self._to_jsons()
 
     def _to_jsons(self):
-        json_dict = self.__dict__
-        json_dict.pop("jsons",None)
+        json_dict = {"positions":self.positions.tolist(),
+                     "rel_abundancies":self.rel_abundancies.tolist(),
+                     "model_params":self.model_params}
         return json.dumps(json_dict)
 
     def _from_jsons(self, jsons:str):
@@ -50,6 +51,14 @@ class ScanProfile(Profile):
 
     @property
     def scans(self):
+        return self.positions
+
+class ChargeProfile(Profile):
+    def __init__(self,charges:Optional[ArrayLike] = None, rel_abundancies:Optional[ArrayLike] = None, model_params: Optional[Dict] = None, jsons:Optional[str] = None):
+        super().__init__(charges, rel_abundancies, jsons)
+
+    @property
+    def charges(self):
         return self.positions
 
 class FeatureGenerator(ABC):
