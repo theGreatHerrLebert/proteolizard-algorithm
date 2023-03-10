@@ -36,10 +36,17 @@ class Profile:
 
 
     def _to_jsons(self):
-        json_dict = {"positions":self.positions.tolist(),
-                     "rel_abundancies":self.rel_abundancies.tolist(),
-                     "model_params":self.model_params}
-        return json.dumps(json_dict)
+        mp = {}
+        for key,val in self.model_params.items():
+            if isinstance(val,np.generic):
+                mp[key] = val.item()
+            else:
+                mp[key] = val
+
+        json_dict = {"positions": self.positions.tolist(),
+                     "rel_abundancies": self.rel_abundancies.tolist(),
+                     "model_params": mp}
+        return json.dumps(json_dict, allow_nan = False)
 
     def _from_jsons(self, jsons:str):
         json_dict = json.loads(jsons)
@@ -52,7 +59,7 @@ class Profile:
 class RTProfile(Profile):
 
     def __init__(self,frames:Optional[ArrayLike] = None, rel_abundancies:Optional[ArrayLike] = None, model_params: Optional[Dict] = None, jsons:Optional[str] = None):
-        super().__init__(frames, rel_abundancies, jsons)
+        super().__init__(frames, rel_abundancies, model_params, jsons)
 
     @property
     def frames(self):
@@ -61,7 +68,7 @@ class RTProfile(Profile):
 class ScanProfile(Profile):
 
     def __init__(self,scans:Optional[ArrayLike] = None, rel_abundancies:Optional[ArrayLike] = None, model_params: Optional[Dict] = None, jsons:Optional[str] = None):
-        super().__init__(scans, rel_abundancies, jsons)
+        super().__init__(scans, rel_abundancies, model_params,  jsons)
 
     @property
     def scans(self):
@@ -69,7 +76,7 @@ class ScanProfile(Profile):
 
 class ChargeProfile(Profile):
     def __init__(self,charges:Optional[ArrayLike] = None, rel_abundancies:Optional[ArrayLike] = None, model_params: Optional[Dict] = None, jsons:Optional[str] = None):
-        super().__init__(charges, rel_abundancies, jsons)
+        super().__init__(charges, rel_abundancies, model_params, jsons)
 
     @property
     def charges(self):

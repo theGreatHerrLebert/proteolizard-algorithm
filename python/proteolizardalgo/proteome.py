@@ -174,10 +174,10 @@ class ProteomicsExperimentSampleSlice:
                                 "simulated_irt_apex",
                                 "simulated_frame_apex",
                                 "simulated_frame_profile",
+                                "simulated_charge_profile",
                                 ]
 
         accepted_ion_simulations = [
-                                "simulated_charge_profile",
                                 "simulated_scan_apex",
                                 "simulated_scan_profile",
                                 ]

@@ -155,9 +155,9 @@ class EMGChromatographyProfileModel(ChromatographyProfileModel):
             λ = 1 # must be sampled
             K = 1/(σ*λ)
             μ = device.irt_to_rt(mu)
-            model_params = { "σ":σ,
-                             "λ":λ,
-                             "μ":μ,
+            model_params = { "sigma":σ,
+                             "lambda":λ,
+                             "mu":μ,
                              "name":"EMG"
                             }
 
@@ -406,8 +406,8 @@ class NormalIonMobilityProfileModel(IonMobilityProfileModel):
         for μ in mus:
             σ = 1 # must be sampled
 
-            model_params = { "σ":σ,
-                             "μ":μ,
+            model_params = { "sigma":σ,
+                             "mu":μ,
                              "name":"NORMAL"
                             }
 
