@@ -1,4 +1,6 @@
 from __future__ import annotations
+import os
+import warnings
 import numpy as np
 from numpy.typing import ArrayLike
 import pandas as pd
@@ -8,7 +10,7 @@ from proteolizardalgo.utility import preprocess_max_quant_sequence, TokenSequenc
 from proteolizardalgo.chemistry import get_mono_isotopic_weight
 from enum import Enum
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Union
 
 class ENZYME(Enum):
     TRYPSIN = 1
@@ -117,10 +119,12 @@ class ProteinSample:
 
 class ProteomicsExperimentDatabaseHandle:
     def __init__(self,path:str):
+        if os.path.exists(path):
+            warnings.warn("Database exists")
         self.con = sqlite3.connect(path)
         self._chunk_size = None
 
-    def push(self, table_name:str, data):
+    def push(self, table_name:str, data:PeptideDigest):
         if table_name == "PeptideDigest":
             assert isinstance(data, PeptideDigest), "For pushing to table 'PeptideDigest' data type must be `PeptideDigest`"
             df = data.data
@@ -129,32 +133,30 @@ class ProteomicsExperimentDatabaseHandle:
 
         df.to_sql(table_name, self.con, if_exists="replace")
 
-    def append(self, table_name:str, data_slice: ProteomicsExperimentSampleSlice):
-        if table_name == "Simulation":
-            assert isinstance(data_slice, ProteomicsExperimentSampleSlice)
-            df = self._make_sql_compatible(table_name.data)
-        else:
-            raise ValueError("This Table does not exist and is not supported")
-
-        df.to_sql(table_name, self.con, if_exists="append")
+    def update(self, data_slice: ProteomicsExperimentSampleSlice):
+        assert isinstance(data_slice, ProteomicsExperimentSampleSlice)
+        df_separated_peptides = data_slice.peptides.apply(self.make_sql_compatible)
+        df_ions = data_slice.ions.apply(self.make_sql_compatible)
+        df_separated_peptides.to_sql("SeparatedPeptides", self.con, if_exists="append")
+        df_ions.to_sql("Ions", self.con , if_exists="append")
 
     def load(self, table_name:str, query:Optional[str] = None):
         if query is None:
             query = f"SELECT * FROM {table_name}"
         return pd.read_sql(query,self.con, index_col="index")
 
-    def load_chunks(self, table_name:str, chunk_size: int, query:Optional[str] = None):
+    def load_chunks(self, chunk_size: int, query:Optional[str] = None):
         if query is None:
-            query = f"SELECT * FROM {table_name}"
+            query = "SELECT * FROM PeptideDigest"
         self.__chunk_generator =  pd.read_sql(query,self.con, chunksize=chunk_size, index_col="index")
         for chunk in self.__chunk_generator:
-            yield(ProteomicsExperimentSampleSlice(table_name, chunk))
+            yield(ProteomicsExperimentSampleSlice(peptides = chunk))
 
     @staticmethod
-    def _make_sql_compatible(column):
+    def make_sql_compatible(column):
         if column.size < 1:
             return
-        if isinstance(column[0], (RTProfile,ScanProfile,ChargeProfile)):
+        if isinstance(column.iloc[0], (RTProfile,ScanProfile,ChargeProfile)):
             return column.apply(lambda x: x.jsons)
         else:
             return column
@@ -163,40 +165,63 @@ class ProteomicsExperimentSampleSlice:
     """
     exposed dataframe of database
     """
-    def __init__(self, table_name: str, data:pd.DataFrame):
-        self.data = data
-        self.table_name = table_name
+    def __init__(self, peptides:pd.DataFrame, ions:Optional[pd.DataFrame]=None):
+        self.peptides = peptides
+        self.ions = ions
 
     def add_simulation(self, simulation_name:str, simulation_data: ArrayLike):
-        accepted_column_names = ["simulated_irt_apex",
-                                 "simulated_frame_apex",
-                                 "simulated_frame_profile",
-                                 "simulated_charge_profile",
-                                 "simulated_scan_apex",
-                                 "simulated_scan_profile",
-                                 ]
+        accepted_peptide_simulations = [
+                                "simulated_irt_apex",
+                                "simulated_frame_apex",
+                                "simulated_frame_profile",
+                                ]
 
-
-        if simulation_name not in accepted_column_names:
-            raise ValueError(f"Simulation name '{simulation_name}' is not defined")
+        accepted_ion_simulations = [
+                                "simulated_charge_profile",
+                                "simulated_scan_apex",
+                                "simulated_scan_profile",
+                                ]
 
         # for profiles store min and max values
-        get_min_position = np.vectorize(lambda p:p.positions.min(),otypes=[int])
+        get_min_position = np.vectorize(lambda p:p.positions.min(), otypes=[int])
         get_max_position = np.vectorize(lambda p:p.positions.max(), otypes=[int])
 
         if simulation_name == "simulated_frame_profile":
 
-            self.data["frame_min"] = get_min_position(simulation_data)
-            self.data["frame_max"] = get_max_position(simulation_data)
+            self.peptides["frame_min"] = get_min_position(simulation_data)
+            self.peptides["frame_max"] = get_max_position(simulation_data)
 
         elif simulation_name == "simulated_charge_profile":
+            ions_dict = {
+                "sequence":[],
+                "mz":[],
+                "charge":[],
+                "relative_abundancy":[]
+                }
+            sequences = self.peptides["sequence"].values
+            masses = self.peptides["mass-theoretical"].values
 
-            self.data["charge_min"] = get_min_position(simulation_data)
-            self.data["charge_max"] = get_max_position(simulation_data)
+            for s, m, charge_profile in zip(sequences,masses,simulation_data):
+                for c,r in charge_profile:
+                    ions_dict["sequence"].append(s)
+                    ions_dict["charge"].append(c)
+                    ions_dict["relative_abundancy"].append(r)
+                    ions_dict["mz"].append(m/c)
+            self.ions = pd.DataFrame(ions_dict)
+
+            self.peptides["charge_min"] = get_min_position(simulation_data)
+            self.peptides["charge_max"] = get_max_position(simulation_data)
 
         elif simulation_name == "simulated_scan_profile":
 
-            self.data["scan_min"] = get_min_position(simulation_data)
-            self.data["scan_max"] = get_max_position(simulation_data)
+            self.ions["scan_min"] = get_min_position(simulation_data)
+            self.ions["scan_max"] = get_max_position(simulation_data)
 
-        self.data[simulation_name] = simulation_data
+        if simulation_name in accepted_peptide_simulations:
+            self.peptides[simulation_name] = simulation_data
+
+        elif simulation_name in accepted_ion_simulations:
+            self.ions[simulation_name] = simulation_data
+
+        else:
+            raise ValueError(f"Simulation name '{simulation_name}' is not defined")

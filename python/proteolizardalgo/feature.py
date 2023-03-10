@@ -21,6 +21,20 @@ class Profile:
         else:
             self._jsons = self._to_jsons()
 
+    def __iter__(self):
+        self.__size = len(self.positions)
+        self.__iterator_pos = 0
+        return self
+
+    def __next__(self):
+        if self.__iterator_pos < self.__size:
+            p = self.positions[self.__iterator_pos]
+            ra = self.rel_abundancies[self.__iterator_pos]
+            self.__iterator_pos += 1
+            return p,ra
+        raise StopIteration
+
+
     def _to_jsons(self):
         json_dict = {"positions":self.positions.tolist(),
                      "rel_abundancies":self.rel_abundancies.tolist(),

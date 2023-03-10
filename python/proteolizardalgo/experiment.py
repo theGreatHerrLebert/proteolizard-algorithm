@@ -74,8 +74,8 @@ class TimsTOFExperiment(ProteomicsExperiment):
 
     def run(self, chunk_size: int = 1000):
         # load bulks of data here as dataframe if necessary
-        for data_chunk in self.database.load_chunks("PeptideDigest", chunk_size):
+        for data_chunk in self.database.load_chunks(chunk_size):
             self.lc_method.run(data_chunk)
             self.ionization_method.run(data_chunk)
             self.ion_mobility_separation_method.run(data_chunk)
-            self.database.append("Simulation", data_chunk)
+            self.database.update(data_chunk)

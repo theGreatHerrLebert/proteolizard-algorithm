@@ -129,7 +129,7 @@ class ChromatographyApexModel(Model):
         self._device = None
 
     @abstractmethod
-    def simulate(self, input: ProteomicsExperimentSampleSlice, device: Chromatography) -> NDArray[np.float64]:
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: Chromatography) -> NDArray[np.float64]:
         pass
 
 class ChromatographyProfileModel(Model):
@@ -137,7 +137,7 @@ class ChromatographyProfileModel(Model):
         pass
 
     @abstractmethod
-    def simulate(self, input: ProteomicsExperimentSampleSlice, device: Chromatography) -> List[RTProfile]:
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: Chromatography) -> List[RTProfile]:
         pass
 
 class EMGChromatographyProfileModel(ChromatographyProfileModel):
@@ -145,9 +145,9 @@ class EMGChromatographyProfileModel(ChromatographyProfileModel):
     def __init__(self):
         super().__init__()
 
-    def simulate(self, input: ProteomicsExperimentSampleSlice, device: Chromatography) -> List[RTProfile]:
-        mus = input.data["simulated_irt_apex"].values
-        frames = input.data["simulated_frame_apex"].values
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: Chromatography) -> List[RTProfile]:
+        mus = sample.peptides["simulated_irt_apex"].values
+        frames = sample.peptides["simulated_frame_apex"].values
         ϵ = device.frame_length
         profile_list = []
         for mu, frame in zip(mus,frames):
@@ -200,8 +200,8 @@ class NeuralChromatographyApex(ChromatographyApexModel):
             return tf.data.Dataset.from_tensor_slices((tokens, pseudo_target)).batch(bs)
         return tf.data.Dataset.from_tensor_slices((tokens, pseudo_target))
 
-    def simulate(self, input: ProteomicsExperimentSampleSlice, device: Chromatography) ->  NDArray[np.float64]:
-        data = input.data
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: Chromatography) ->  NDArray[np.float64]:
+        data = sample.peptides
         ds = self.sequences_tf_dataset(data['sequence-tokenized'])
         print('predicting irts...')
         return self.model.predict(ds)
@@ -236,7 +236,7 @@ class IonizationModel(Model):
         pass
 
     @abstractmethod
-    def simulate(self, input:ProteomicsExperimentSampleSlice, device: IonSource) -> NDArray:
+    def simulate(self, sample:ProteomicsExperimentSampleSlice, device: IonSource) -> NDArray:
         pass
 
 class RandomIonSource(IonizationModel):
@@ -265,7 +265,7 @@ class RandomIonSource(IonizationModel):
         if self.charge_probabilities.shape != self.allowed_charges.shape:
             raise ValueError("Number of allowed charges must fit to number of probabilities")
 
-        data = ProteomicsExperimentSampleSlice.data
+        data = ProteomicsExperimentSampleSlice.peptides
         charge = np.random.choice(self.allowed_charges, data.shape[0], p=self.charge_probabilities)
         rel_intensity = np.ones_like(charge)
         charge_profiles = []
@@ -336,7 +336,7 @@ class TrappedIon(IonMobilitySeparation):
         sample.add_simulation("simulated_scan_profile", scan_profile)
 
     def im_to_scan(self, inv_mob, slope=-880.57513791, intercept=1454.29035506):
-        return int(np.round(inv_mob * slope + intercept))
+        return np.round(inv_mob * slope + intercept).astype(np.int16)
 
 
 class IonMobilityApexModel(Model):
@@ -381,10 +381,10 @@ class NeuralMobilityApex(IonMobilityApexModel):
             return tf.data.Dataset.from_tensor_slices(((mz, c, tokens), pseudo_target)).batch(bs)
         return tf.data.Dataset.from_tensor_slices(((mz, c, tokens), pseudo_target))
 
-    def simulate(self, input: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> NDArray:
-        data = input.data
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> NDArray:
+        data = sample.ions
 
-        ds = self.sequences_tf_dataset(data['mz'], data['charge'], data['sequence-tokenized'])
+        ds = self.sequences_tf_dataset(data['mz'], data['charge'], data['sequence'])
 
         mz = data['mz'].values
 
@@ -400,7 +400,7 @@ class NormalIonMobilityProfileModel(IonMobilityProfileModel):
         super().__init__()
 
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> List[ScanProfile]:
-        mus = input.data["simulated_scan_apex"].values
+        mus = sample.ions["simulated_scan_apex"].values
         ϵ = device.scan_time
         profile_list = []
         for μ in mus:
