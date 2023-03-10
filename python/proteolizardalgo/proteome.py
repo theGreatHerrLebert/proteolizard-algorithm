@@ -1,5 +1,6 @@
 from __future__ import annotations
 import numpy as np
+from numpy.typing import ArrayLike
 import pandas as pd
 import sqlite3
 from proteolizardalgo.feature import RTProfile, ScanProfile, ChargeProfile
@@ -166,7 +167,7 @@ class ProteomicsExperimentSampleSlice:
         self.data = data
         self.table_name = table_name
 
-    def add_simulation(self, simulation_name:str, simulation_data):
+    def add_simulation(self, simulation_name:str, simulation_data: ArrayLike):
         accepted_column_names = ["simulated_irt_apex",
                                  "simulated_frame_apex",
                                  "simulated_frame_profile",
@@ -174,7 +175,28 @@ class ProteomicsExperimentSampleSlice:
                                  "simulated_scan_apex",
                                  "simulated_scan_profile",
                                  ]
+
+
         if simulation_name not in accepted_column_names:
             raise ValueError(f"Simulation name '{simulation_name}' is not defined")
-        else:
-            self.data[simulation_name] = simulation_data
+
+        # for profiles store min and max values
+        get_min_position = np.vectorize(lambda p:p.positions.min(),otypes=[int])
+        get_max_position = np.vectorize(lambda p:p.positions.max(), otypes=[int])
+
+        if simulation_name == "simulated_frame_profile":
+
+            self.data["frame_min"] = get_min_position(simulation_data)
+            self.data["frame_max"] = get_max_position(simulation_data)
+
+        elif simulation_name == "simulated_charge_profile":
+
+            self.data["charge_min"] = get_min_position(simulation_data)
+            self.data["charge_max"] = get_max_position(simulation_data)
+
+        elif simulation_name == "simulated_scan_profile":
+
+            self.data["scan_min"] = get_min_position(simulation_data)
+            self.data["scan_max"] = get_max_position(simulation_data)
+
+        self.data[simulation_name] = simulation_data
