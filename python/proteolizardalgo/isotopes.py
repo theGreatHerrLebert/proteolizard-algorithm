@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import warnings
 import numpy as np
 from numpy.typing import ArrayLike
 from abc import ABC, abstractmethod
@@ -146,7 +146,8 @@ class AveragineGenerator(IsotopePatternGenerator):
     def generate_spectrum(self, mass: int, charge: int, frame_id: int, scan_id: int, k: int = 7,
                           amp :float = 1e4, resolution:float =3, min_intensity: int = 5, centroided: bool = True) -> MzSpectrum:
 
-        assert 100 <= mass / charge <= 2000, f"m/z should be between 100 and 2000, was: {mass / charge}"
+        if not 100 <= mass / charge <= 2000:
+            warnings.warn(f"m/z should be between 100 and 2000, was: {mass / charge}")
 
         lb = mass / charge - .2
         ub = mass / charge + k + .2

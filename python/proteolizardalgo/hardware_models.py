@@ -94,11 +94,13 @@ class Chromatography(Device):
         return self._irt_to_rt_converter(irt)
 
     def frame_time_interval(self, frame_id:ArrayLike):
+        frame_id = np.atleast_1d(frame_id)
         s = (frame_id-1)*self.frame_length
         e = frame_id*self.frame_length
         return np.stack([s, e], axis = 1)
 
     def frame_time_middle(self, frame_id: ArrayLike):
+        frame_id = np.atleast_1d(frame_id)
         return np.mean(self.frame_time_interval(frame_id),axis=1)
 
 class LiquidChromatography(Chromatography):
@@ -202,7 +204,7 @@ class NeuralChromatographyApex(ChromatographyApexModel):
 
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: Chromatography) ->  NDArray[np.float64]:
         data = sample.peptides
-        ds = self.sequences_tf_dataset(data['sequence-tokenized'])
+        ds = self.sequences_tf_dataset(data['sequence_tokenized'])
         print('predicting irts...')
         return self.model.predict(ds)
 
@@ -277,16 +279,34 @@ class IonMobilitySeparation(Device):
         super().__init__(name)
         self._apex_model = None
         self._profile_model = None
-        self._num_scans = None
+        self._scan_intervall = 1
         self._scan_time = None
+        self._scan_id_min = None
+        self._scan_id_max = None
 
     @property
-    def num_scans(self):
+    def scan_intervall(self):
         return self._num_scans
 
-    @num_scans.setter
-    def num_scans(self, number:int):
-        self._num_scans = number
+    @scan_intervall.setter
+    def scan_intervall(self, number:int):
+        self._scan_intervall = number
+
+    @property
+    def scan_id_min(self):
+        return self._scan_id_min
+
+    @scan_id_min.setter
+    def scan_id_min(self, number:int):
+        self._scan_id_min = number
+
+    @property
+    def scan_id_max(self):
+        return self._scan_id_max
+
+    @scan_id_max.setter
+    def scan_id_max(self, number:int):
+        self._scan_id_max = number
 
     @property
     def scan_time(self):
@@ -324,6 +344,8 @@ class TrappedIon(IonMobilitySeparation):
 
     def __init__(self, name:str = "TrappedIonMobilitySeparation"):
         super().__init__()
+        self._scan_id_min = 1
+        self._scan_id_max = 918
 
     def run(self, sample: ProteomicsExperimentSampleSlice):
         # scan apex simulation
@@ -336,6 +358,7 @@ class TrappedIon(IonMobilitySeparation):
         sample.add_simulation("simulated_scan_profile", scan_profile)
 
     def im_to_scan(self, inv_mob, slope=-880.57513791, intercept=1454.29035506):
+        # TODO more approbriate function here ?
         return np.round(inv_mob * slope + intercept).astype(np.int16)
 
 

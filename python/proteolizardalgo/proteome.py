@@ -7,7 +7,7 @@ import pandas as pd
 import sqlite3
 from proteolizardalgo.feature import RTProfile, ScanProfile, ChargeProfile
 from proteolizardalgo.utility import preprocess_max_quant_sequence, TokenSequence
-from proteolizardalgo.chemistry import get_mono_isotopic_weight
+from proteolizardalgo.chemistry import get_mono_isotopic_weight, MASS_PROTON
 from enum import Enum
 from abc import ABC, abstractmethod
 from typing import Optional, List, Union
@@ -107,9 +107,9 @@ class ProteinSample:
                 if pep['sequence'].find('X') == -1:
                     pep['id'] = gene
                     pep['sequence'] = '_' + pep['sequence'] + '_'
-                    pep['sequence-tokenized'] = preprocess_max_quant_sequence(pep['sequence'])
-                    pep['mass-theoretical'] = get_mono_isotopic_weight(pep['sequence-tokenized'])
-                    pep['sequence-tokenized'] = TokenSequence(pep['sequence-tokenized']).jsons
+                    pep['sequence_tokenized'] = preprocess_max_quant_sequence(pep['sequence'])
+                    pep['mass_theoretical'] = get_mono_isotopic_weight(pep['sequence_tokenized'])
+                    pep['sequence_tokenized'] = TokenSequence(pep['sequence_tokenized']).jsons
                     r_list.append(pep)
 
         return PeptideDigest(pd.DataFrame(r_list), self.name, enzyme.name)
@@ -151,6 +151,31 @@ class ProteomicsExperimentDatabaseHandle:
         self.__chunk_generator =  pd.read_sql(query,self.con, chunksize=chunk_size, index_col="index")
         for chunk in self.__chunk_generator:
             yield(ProteomicsExperimentSampleSlice(peptides = chunk))
+
+    def load_frame(self, frame_id:int):
+        query = (
+                "SELECT SeparatedPeptides.sequence, "
+                "SeparatedPeptides.simulated_frame_profile, "
+                "SeparatedPeptides.mass_theoretical, "
+                "Ions.mz, "
+                "Ions.charge, "
+                "Ions.relative_abundancy, "
+                "Ions.scan_min, "
+                "Ions.scan_max, "
+                "Ions.simulated_scan_profile "
+                "FROM SeparatedPeptides "
+                "INNER JOIN Ions "
+                "ON SeparatedPeptides.sequence = Ions.sequence "
+                f"AND SeparatedPeptides.frame_min <= {frame_id} "
+                f"AND SeparatedPeptides.frame_max >= {frame_id} "
+                )
+        df = pd.read_sql(query, self.con)
+
+        # unzip jsons
+        df.loc[:,"simulated_scan_profile"] = df["simulated_scan_profile"].transform(lambda sp: ScanProfile(jsons=sp))
+        df.loc[:,"simulated_frame_profile"] = df["simulated_frame_profile"].transform(lambda rp: RTProfile(jsons=rp))
+
+        return df
 
     @staticmethod
     def make_sql_compatible(column):
@@ -199,14 +224,14 @@ class ProteomicsExperimentSampleSlice:
                 "relative_abundancy":[]
                 }
             sequences = self.peptides["sequence"].values
-            masses = self.peptides["mass-theoretical"].values
+            masses = self.peptides["mass_theoretical"].values
 
             for s, m, charge_profile in zip(sequences,masses,simulation_data):
                 for c,r in charge_profile:
                     ions_dict["sequence"].append(s)
                     ions_dict["charge"].append(c)
                     ions_dict["relative_abundancy"].append(r)
-                    ions_dict["mz"].append(m/c)
+                    ions_dict["mz"].append(m/c + MASS_PROTON)
             self.ions = pd.DataFrame(ions_dict)
 
             self.peptides["charge_min"] = get_min_position(simulation_data)
