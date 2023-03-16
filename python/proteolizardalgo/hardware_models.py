@@ -1,6 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Tuple
 
 import tensorflow as tf
 import numpy as np
@@ -95,13 +95,19 @@ class Chromatography(Device):
 
     def frame_time_interval(self, frame_id:ArrayLike):
         frame_id = np.atleast_1d(frame_id)
-        s = (frame_id-1)*self.frame_length
-        e = frame_id*self.frame_length
+        frame_length_minutes = self.frame_length/(60*1000)
+        s = (frame_id-1)*frame_length_minutes
+        e = frame_id*frame_length_minutes
         return np.stack([s, e], axis = 1)
 
     def frame_time_middle(self, frame_id: ArrayLike):
-        frame_id = np.atleast_1d(frame_id)
         return np.mean(self.frame_time_interval(frame_id),axis=1)
+
+    def frame_time_end(self, frame_id: ArrayLike):
+        return self.frame_time_interval(frame_id)[:,1]
+
+    def frame_time_start(self, frame_id: ArrayLike):
+        return self.frame_time_interval(frame_id)[:,0]
 
 class LiquidChromatography(Chromatography):
     def __init__(self, name: str = "LiquidChromatographyDevice"):
@@ -120,10 +126,10 @@ class LiquidChromatography(Chromatography):
         retention_profile = self._profile_model.simulate(sample, self)
         sample.add_simulation("simulated_frame_profile", retention_profile)
 
-    def rt_to_frame_id(self,  rt_seconds: ArrayLike):
-        rt_seconds = np.asarray(rt_seconds)
+    def rt_to_frame_id(self,  rt_minutes: ArrayLike):
+        rt_minutes = np.asarray(rt_minutes)
         # first frame is completed not at 0 but at frame_length
-        frame_id = (rt_seconds/self.frame_length*1000).astype(np.int64)+1
+        frame_id = (rt_minutes/self.frame_length*1000*60).astype(np.int64)+1
         return frame_id
 
 class ChromatographyApexModel(Model):
@@ -149,12 +155,11 @@ class EMGChromatographyProfileModel(ChromatographyProfileModel):
 
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: Chromatography) -> List[RTProfile]:
         mus = sample.peptides["simulated_irt_apex"].values
-        frames = sample.peptides["simulated_frame_apex"].values
-        ϵ = device.frame_length
         profile_list = []
-        for mu, frame in zip(mus,frames):
-            σ = 1 # must be sampled
-            λ = 1 # must be sampled
+
+        for mu in mus:
+            σ = 0.1 # must be sampled
+            λ = 10 # must be sampled
             K = 1/(σ*λ)
             μ = device.irt_to_rt(mu)
             model_params = { "sigma":σ,
@@ -165,15 +170,16 @@ class EMGChromatographyProfileModel(ChromatographyProfileModel):
 
             emg = exponnorm(loc=μ, scale=σ, K = K)
             # start and end value (in retention times)
-            s_rt, e_rt = emg.ppf([0.05,0.95])
+            s_rt, e_rt = emg.ppf([0.01,0.9])
             # as frames
             s_frame, e_frame = device.rt_to_frame_id(s_rt), device.rt_to_frame_id(e_rt)
 
-            profile_frames = np.arange(s_frame,e_frame+1)
-            profile_middle_times = device.frame_time_middle(profile_frames)
-            profile_rel_intensities = emg.pdf(profile_middle_times)* ϵ
+            profile_frames = np.arange(s_frame-1,e_frame+1) # starting with s_frame-1 for cdf interval calculation
+            profile_rt_ends = device.frame_time_end(profile_frames)
+            profile_rt_cdfs = emg.cdf(profile_rt_ends)
+            profile_rel_intensities = np.diff(profile_rt_cdfs)
 
-            profile_list.append(RTProfile(profile_frames,profile_rel_intensities,model_params))
+            profile_list.append(RTProfile(profile_frames[1:],profile_rel_intensities,model_params))
         return profile_list
 
 
@@ -332,13 +338,30 @@ class IonMobilitySeparation(Device):
     def profile_model(self, model: IonMobilityProfileModel):
         self._profile_model = model
 
+
+
+    def scan_im_middle(self, scan_id: ArrayLike):
+        return np.mean(self.scan_im_interval(scan_id), axis = 1)
+
+    def scan_im_lower(self, scan_id: ArrayLike):
+        return self.scan_im_interval(scan_id)[:,0]
+
+    def scan_im_upper(self, scan_id:ArrayLike):
+        return self.scan_im_interval(scan_id)[:,1]
+
     @abstractmethod
     def run(self, sample: ProteomicsExperimentSampleSlice):
         pass
 
     @abstractmethod
-    def im_to_scan(self):
+    def scan_im_interval(self, scan_id: ArrayLike):
         pass
+
+    @abstractmethod
+    def im_to_scan(self, one_over_k0):
+        pass
+
+
 
 class TrappedIon(IonMobilitySeparation):
 
@@ -346,21 +369,45 @@ class TrappedIon(IonMobilitySeparation):
         super().__init__()
         self._scan_id_min = 1
         self._scan_id_max = 918
+        self._slope = -880.57513791
+        self._intercept = 1454.29035506
+
+    @property
+    def slope(self):
+        return self._slope
+
+    @slope.setter
+    def slope(self, slope:float):
+        self._slope = slope
+
+    @property
+    def intercept(self):
+        return self._intercept
+
+    @intercept.setter
+    def intercept(self, intercept:float):
+        self._intercept = intercept
 
     def run(self, sample: ProteomicsExperimentSampleSlice):
         # scan apex simulation
-        scan_apex = self._apex_model.simulate(sample, self)
+        one_over_k0, scan_apex = self._apex_model.simulate(sample, self)
         # in irt and rt
         sample.add_simulation("simulated_scan_apex", scan_apex)
-
+        sample.add_simulation("simulated_one_over_k0", one_over_k0)
         # scan profile simulation
         scan_profile = self._profile_model.simulate(sample, self)
         sample.add_simulation("simulated_scan_profile", scan_profile)
 
-    def im_to_scan(self, inv_mob, slope=-880.57513791, intercept=1454.29035506):
-        # TODO more approbriate function here ?
-        return np.round(inv_mob * slope + intercept).astype(np.int16)
+    def scan_im_interval(self, scan_id: ArrayLike):
+        scan_id = np.atleast_1d(scan_id)
+        lower = ( scan_id    - self.intercept ) / self.slope
+        upper = ((scan_id+1) - self.intercept ) / self.slope
+        return np.stack([lower, upper], axis=1)
 
+
+    def im_to_scan(self, one_over_k0):
+        # TODO more approbriate function here ?
+        return np.round(one_over_k0 * self.slope + self.intercept).astype(np.int16)
 
 class IonMobilityApexModel(Model):
     def __init__(self):
@@ -404,7 +451,7 @@ class NeuralMobilityApex(IonMobilityApexModel):
             return tf.data.Dataset.from_tensor_slices(((mz, c, tokens), pseudo_target)).batch(bs)
         return tf.data.Dataset.from_tensor_slices(((mz, c, tokens), pseudo_target))
 
-    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> NDArray:
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> Tuple[NDArray]:
         data = sample.ions
 
         ds = self.sequences_tf_dataset(data['mz'], data['charge'], data['sequence'])
@@ -416,18 +463,17 @@ class NeuralMobilityApex(IonMobilityApexModel):
         one_over_k0 = ccs_to_one_over_reduced_mobility(np.squeeze(ccs), mz, data['charge'].values)
 
         scans = device.im_to_scan(one_over_k0)
-        return scans
+        return one_over_k0,scans
 
 class NormalIonMobilityProfileModel(IonMobilityProfileModel):
     def __init__(self):
         super().__init__()
 
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> List[ScanProfile]:
-        mus = sample.ions["simulated_scan_apex"].values
-        ϵ = device.scan_time
+        mus = sample.ions["simulated_one_over_k0"].values
         profile_list = []
         for μ in mus:
-            σ = 1 # must be sampled
+            σ = 0.01 # must be sampled
 
             model_params = { "sigma":σ,
                              "mu":μ,
@@ -435,16 +481,18 @@ class NormalIonMobilityProfileModel(IonMobilityProfileModel):
                             }
 
             normal = norm(loc=μ, scale=σ)
-            # start and end value (in retention times)
-            s_rt, e_rt = normal.ppf([0.05,0.95])
-            # as frames
-            s_scan, e_scan = int(s_rt), int(e_rt)
+            # start and end value (in one_over_k0)
+            s_im, e_im = normal.ppf([0.01,0.99])
+            # as scan ids, remember first scans elutes largest ions
+            e_scan, s_scan = device.im_to_scan(s_im), device.im_to_scan(e_im)
 
-            profile_scans = np.arange(s_scan,e_scan+1)
-            profile_middle_times = profile_scans + 0.5
-            profile_rel_intensities = normal.pdf(profile_middle_times)* ϵ
+            profile_scans = np.arange(s_scan-1,e_scan+1) # starting s_scan-1 is necessary here to include its end value for cdf interval
+            profile_end_im = device.scan_im_upper(profile_scans)
+            profile_end_cdfs = normal.cdf(profile_end_im)
+            # remember we are going backwards because of 1/k0 is shrinking with increasing scan numbers
+            profile_rel_intensities = np.abs(np.diff(profile_end_cdfs))
 
-            profile_list.append(ScanProfile(profile_scans,profile_rel_intensities,model_params))
+            profile_list.append(ScanProfile(profile_scans[1:],profile_rel_intensities,model_params))
         return profile_list
 
 

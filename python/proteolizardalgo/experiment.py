@@ -91,10 +91,12 @@ class TimsTOFExperiment(ProteomicsExperiment):
         avg = AveragineGenerator()
         # construct signal data set
         signal = {}
+        spectra_cache = {}
         for f_id in tqdm(range(self.lc_method.num_frames)):
             # for every frame
             # load all ions in that frame
             #empty_frame = TimsFrame(None, f_id, self.lc_method.frame_time_middle(f_id), [],[],[],[],[])
+
             signal_in_frame = {}
             peptides_in_frame = self.database.load_frame(f_id)
             if peptides_in_frame.shape[0] == 0:
@@ -102,6 +104,16 @@ class TimsTOFExperiment(ProteomicsExperiment):
             # put ions in scan if they appear in that scan
             frame_list = [[] for scan_id in scan_id_list]
             for idx,row in peptides_in_frame.iterrows():
+
+                sequence = row["sequence"]
+                charge = row["charge"]
+                if sequence in spectra_cache:
+                    if charge not in spectra_cache[sequence]:
+                        spectra_cache[sequence][charge] = None
+                else:
+                    spectra_cache[sequence] = {}
+                    spectra_cache[sequence][charge] = None
+
                 scan = row["scan_min"]
                 while scan <= row["scan_max"]:
                     if scan >= scan_id_min and scan <= scan_id_max:
@@ -114,16 +126,24 @@ class TimsTOFExperiment(ProteomicsExperiment):
                 if len(ion_list) == 0:
                     continue
                 scan_id = idx+scan_id_min
-                empty_spectrum = MzSpectrum(None,f_id,scan_id,[],[])
+                scan_spectrum = MzSpectrum(None,f_id,scan_id,[],[])
                 # for every scan
-                spectra_list = []
                 for ion in ion_list:
                     ion_data = peptides_in_frame.loc[ion,:]
                     charge = ion_data["charge"]
                     mass = ion_data["mass_theoretical"]
-                    spectra_list.append(avg.generate_spectrum(mass,charge,f_id,scan_id,centroided=False))
-                scan_spectrum = sum(spectra_list, start=empty_spectrum).to_resolution(3)
-                signal_in_frame[scan_id] = scan_spectrum
-
+                    abundancy = ion_data["abundancy"]*ion_data["relative_abundancy"]
+                    rel_frame_abundancy = ion_data["simulated_frame_profile"][f_id]
+                    rel_scan_abundancy = ion_data["simulated_scan_profile"][scan_id]
+                    abundancy *= rel_frame_abundancy*rel_scan_abundancy
+                    sequence = ion_data["sequence"]
+                    if spectra_cache[sequence][charge] is None:
+                        ion_spectrum = avg.generate_spectrum(mass,charge,f_id,scan_id,centroided=False)
+                        spectra_cache[sequence][charge] = ion_spectrum
+                    else:
+                        ion_spectrum = spectra_cache[sequence][charge]
+                    default_abundancy = avg.default_abundancy
+                    scan_spectrum += abundancy/default_abundancy*ion_spectrum
+                signal_in_frame[scan_id] = scan_spectrum.to_resolution(3)
             signal[f_id] = signal_in_frame
         return signal

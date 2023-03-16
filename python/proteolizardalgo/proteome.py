@@ -53,7 +53,7 @@ class Trypsin(Enzyme):
     def __repr__(self):
         return f'Enzyme(name: {self.name.name})'
 
-    def digest(self, sequence, missed_cleavages=0, min_length=7):
+    def digest(self, sequence, abundancy, missed_cleavages=0, min_length=7):
         assert 0 <= missed_cleavages <= 2, f'Number of missed cleavages might be between 0 and 2, was: {missed_cleavages}'
 
         cut_sites = self.calculate_cleavages(sequence)
@@ -75,7 +75,7 @@ class Trypsin(Enzyme):
         # filter out short sequences and clean index display
         wi = map(lambda p: (p[0], p[1][0], p[1][1]), filter(lambda s: len(s[0]) >= min_length, wi))
 
-        return list(map(lambda e: {'sequence': e[0], 'start': e[1], 'end': e[2]}, wi))
+        return list(map(lambda e: {'sequence': e[0], 'start': e[1], 'end': e[2], 'abundancy': abundancy}, wi))
 
 
 class PeptideDigest:
@@ -96,7 +96,7 @@ class ProteinSample:
 
     def digest(self, enzyme: Enzyme, missed_cleavages: int = 0, min_length: int = 7) -> PeptideDigest:
 
-        digest = self.data.apply(lambda r: enzyme.digest(r['sequence'], missed_cleavages, min_length), axis=1)
+        digest = self.data.apply(lambda r: enzyme.digest(r['sequence'], r['abundancy'], missed_cleavages, min_length), axis=1)
 
         V = zip(self.data['id'].values, digest.values)
 
@@ -157,6 +157,7 @@ class ProteomicsExperimentDatabaseHandle:
                 "SELECT SeparatedPeptides.sequence, "
                 "SeparatedPeptides.simulated_frame_profile, "
                 "SeparatedPeptides.mass_theoretical, "
+                "SeparatedPeptides.abundancy, "
                 "Ions.mz, "
                 "Ions.charge, "
                 "Ions.relative_abundancy, "
@@ -204,6 +205,7 @@ class ProteomicsExperimentSampleSlice:
 
         accepted_ion_simulations = [
                                 "simulated_scan_apex",
+                                "simulated_one_over_k0",
                                 "simulated_scan_profile",
                                 ]
 

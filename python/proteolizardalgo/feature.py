@@ -12,13 +12,14 @@ from typing import Optional, Dict
 class Profile:
 
     def __init__(self,positions:Optional[ArrayLike] = None, rel_abundancies:Optional[ArrayLike] = None, model_params: Optional[Dict] = None, jsons:Optional[str] = None):
-        self.positions = np.asarray(positions)
-        self.rel_abundancies = np.asarray(rel_abundancies)
-        self.model_params = model_params
         if jsons is not None:
             self._jsons = jsons
-            self.positions, self.rel_abundancies, self.model_params = self._from_jsons(jsons)
+            self.positions, self.rel_abundancies, self.model_params, self.access_dictionary = self._from_jsons(jsons)
         else:
+            self.positions = np.asarray(positions)
+            self.rel_abundancies = np.asarray(rel_abundancies)
+            self.model_params = model_params
+            self.access_dictionary = {p:i for p,i in zip(positions, rel_abundancies)}
             self._jsons = self._to_jsons()
 
     def __iter__(self):
@@ -34,6 +35,8 @@ class Profile:
             return p,ra
         raise StopIteration
 
+    def __getitem__(self, position: int):
+        return self.access_dictionary[position]
 
     def _to_jsons(self):
         mp = {}
@@ -50,7 +53,10 @@ class Profile:
 
     def _from_jsons(self, jsons:str):
         json_dict = json.loads(jsons)
-        return json_dict["positions"],json_dict["rel_abundancies"],json_dict["model_params"]
+        positions = json_dict["positions"]
+        rel_abundancies = json_dict["rel_abundancies"]
+        access_dictionary = {p:i for p,i in zip(positions, rel_abundancies)}
+        return positions,rel_abundancies,json_dict["model_params"], access_dictionary
 
     @property
     def jsons(self):
