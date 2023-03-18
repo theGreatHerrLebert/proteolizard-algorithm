@@ -1,16 +1,16 @@
+from __future__ import annotations
 import os
-
-import tensorflow as tf
+import warnings
 import numpy as np
-from numpy.random import choice
+from numpy.typing import ArrayLike
 import pandas as pd
-
-from proteolizardalgo.utility import preprocess_max_quant_sequence
-from proteolizardalgo.chemistry import get_mono_isotopic_weight, ccs_to_one_over_reduced_mobility, MASS_PROTON
-
+import sqlite3
+from proteolizardalgo.feature import RTProfile, ScanProfile, ChargeProfile
+from proteolizardalgo.utility import preprocess_max_quant_sequence, TokenSequence
+from proteolizardalgo.chemistry import get_mono_isotopic_weight, MASS_PROTON
 from enum import Enum
 from abc import ABC, abstractmethod
-
+from typing import Optional, List, Union
 
 class ENZYME(Enum):
     TRYPSIN = 1
@@ -53,7 +53,7 @@ class Trypsin(Enzyme):
     def __repr__(self):
         return f'Enzyme(name: {self.name.name})'
 
-    def digest(self, sequence, missed_cleavages=0, min_length=7):
+    def digest(self, sequence, abundancy, missed_cleavages=0, min_length=7):
         assert 0 <= missed_cleavages <= 2, f'Number of missed cleavages might be between 0 and 2, was: {missed_cleavages}'
 
         cut_sites = self.calculate_cleavages(sequence)
@@ -75,7 +75,7 @@ class Trypsin(Enzyme):
         # filter out short sequences and clean index display
         wi = map(lambda p: (p[0], p[1][0], p[1][1]), filter(lambda s: len(s[0]) >= min_length, wi))
 
-        return list(map(lambda e: {'sequence': e[0], 'start': e[1], 'end': e[2]}, wi))
+        return list(map(lambda e: {'sequence': e[0], 'start': e[1], 'end': e[2], 'abundancy': abundancy}, wi))
 
 
 class PeptideDigest:
@@ -96,7 +96,7 @@ class ProteinSample:
 
     def digest(self, enzyme: Enzyme, missed_cleavages: int = 0, min_length: int = 7) -> PeptideDigest:
 
-        digest = self.data.apply(lambda r: enzyme.digest(r['sequence'], missed_cleavages, min_length), axis=1)
+        digest = self.data.apply(lambda r: enzyme.digest(r['sequence'], r['abundancy'], missed_cleavages, min_length), axis=1)
 
         V = zip(self.data['id'].values, digest.values)
 
@@ -107,8 +107,9 @@ class ProteinSample:
                 if pep['sequence'].find('X') == -1:
                     pep['id'] = gene
                     pep['sequence'] = '_' + pep['sequence'] + '_'
-                    pep['sequence-tokenized'] = preprocess_max_quant_sequence(pep['sequence'])
-                    pep['mass-theoretical'] = get_mono_isotopic_weight(pep['sequence-tokenized'])
+                    pep['sequence_tokenized'] = preprocess_max_quant_sequence(pep['sequence'])
+                    pep['mass_theoretical'] = get_mono_isotopic_weight(pep['sequence_tokenized'])
+                    pep['sequence_tokenized'] = TokenSequence(pep['sequence_tokenized']).jsons
                     r_list.append(pep)
 
         return PeptideDigest(pd.DataFrame(r_list), self.name, enzyme.name)
@@ -116,104 +117,138 @@ class ProteinSample:
     def __repr__(self):
         return f'ProteinSample(Organism: {self.name.name})'
 
+class ProteomicsExperimentDatabaseHandle:
+    def __init__(self,path:str):
+        if os.path.exists(path):
+            warnings.warn("Database exists")
+        self.con = sqlite3.connect(path)
+        self._chunk_size = None
 
-class LiquidChromatography(ABC):
-    def __init__(self):
-        pass
+    def push(self, table_name:str, data:PeptideDigest):
+        if table_name == "PeptideDigest":
+            assert isinstance(data, PeptideDigest), "For pushing to table 'PeptideDigest' data type must be `PeptideDigest`"
+            df = data.data
+        else:
+            raise ValueError("This Table does not exist and is not supported")
 
-    @abstractmethod
-    def get_retention_times(self, sequences: list[str]) -> np.array:
-        pass
+        df.to_sql(table_name, self.con, if_exists="replace")
 
+    def update(self, data_slice: ProteomicsExperimentSampleSlice):
+        assert isinstance(data_slice, ProteomicsExperimentSampleSlice)
+        df_separated_peptides = data_slice.peptides.apply(self.make_sql_compatible)
+        df_ions = data_slice.ions.apply(self.make_sql_compatible)
+        df_separated_peptides.to_sql("SeparatedPeptides", self.con, if_exists="append")
+        df_ions.to_sql("Ions", self.con , if_exists="append")
 
-class NeuralChromatography(LiquidChromatography):
+    def load(self, table_name:str, query:Optional[str] = None):
+        if query is None:
+            query = f"SELECT * FROM {table_name}"
+        return pd.read_sql(query,self.con, index_col="index")
 
-    def __init__(self, model_path: str, tokenizer: tf.keras.preprocessing.text.Tokenizer):
-        super().__init__()
-        self.model = tf.keras.models.load_model(model_path)
-        self.tokenizer = tokenizer
+    def load_chunks(self, chunk_size: int, query:Optional[str] = None):
+        if query is None:
+            query = "SELECT * FROM PeptideDigest"
+        self.__chunk_generator =  pd.read_sql(query,self.con, chunksize=chunk_size, index_col="index")
+        for chunk in self.__chunk_generator:
+            yield(ProteomicsExperimentSampleSlice(peptides = chunk))
 
-    def sequences_to_tokens(self, sequences: np.array) -> np.array:
-        print('tokenizing sequences...')
-        seq_lists = [list(s) for s in sequences]
-        tokens = self.tokenizer.texts_to_sequences(seq_lists)
-        tokens_padded = tf.keras.preprocessing.sequence.pad_sequences(tokens, 50, padding='post')
-        return tokens_padded
+    def load_frame(self, frame_id:int):
+        query = (
+                "SELECT SeparatedPeptides.sequence, "
+                "SeparatedPeptides.simulated_frame_profile, "
+                "SeparatedPeptides.mass_theoretical, "
+                "SeparatedPeptides.abundancy, "
+                "Ions.mz, "
+                "Ions.charge, "
+                "Ions.relative_abundancy, "
+                "Ions.scan_min, "
+                "Ions.scan_max, "
+                "Ions.simulated_scan_profile "
+                "FROM SeparatedPeptides "
+                "INNER JOIN Ions "
+                "ON SeparatedPeptides.sequence = Ions.sequence "
+                f"AND SeparatedPeptides.frame_min <= {frame_id} "
+                f"AND SeparatedPeptides.frame_max >= {frame_id} "
+                )
+        df = pd.read_sql(query, self.con)
 
-    def sequences_tf_dataset(self, sequences: np.array, batched: bool = True, bs: int = 2048) -> tf.data.Dataset:
-        tokens = self.sequences_to_tokens(sequences)
-        print('generating tf dataset...')
-        pseudo_target = np.expand_dims(np.zeros_like(tokens[:, 0]), axis=1)
+        # unzip jsons
+        df.loc[:,"simulated_scan_profile"] = df["simulated_scan_profile"].transform(lambda sp: ScanProfile(jsons=sp))
+        df.loc[:,"simulated_frame_profile"] = df["simulated_frame_profile"].transform(lambda rp: RTProfile(jsons=rp))
 
-        if batched:
-            return tf.data.Dataset.from_tensor_slices((tokens, pseudo_target)).batch(bs)
-        return tf.data.Dataset.from_tensor_slices((tokens, pseudo_target))
+        return df
 
-    def get_retention_times(self, data: pd.DataFrame) -> np.array:
-        ds = self.sequences_tf_dataset(data['sequence-tokenized'])
-        print('predicting irts...')
-        return self.model.predict(ds)
+    @staticmethod
+    def make_sql_compatible(column):
+        if column.size < 1:
+            return
+        if isinstance(column.iloc[0], (RTProfile,ScanProfile,ChargeProfile)):
+            return column.apply(lambda x: x.jsons)
+        else:
+            return column
 
+class ProteomicsExperimentSampleSlice:
+    """
+    exposed dataframe of database
+    """
+    def __init__(self, peptides:pd.DataFrame, ions:Optional[pd.DataFrame]=None):
+        self.peptides = peptides
+        self.ions = ions
 
-class IonSource(ABC):
-    def __init__(self):
-        pass
+    def add_simulation(self, simulation_name:str, simulation_data: ArrayLike):
+        accepted_peptide_simulations = [
+                                "simulated_irt_apex",
+                                "simulated_frame_apex",
+                                "simulated_frame_profile",
+                                "simulated_charge_profile",
+                                ]
 
-    @abstractmethod
-    def ionize(self, data: pd.DataFrame, allowed_charges: list = [1, 2, 3, 4, 5]) -> np.array:
-        pass
+        accepted_ion_simulations = [
+                                "simulated_scan_apex",
+                                "simulated_one_over_k0",
+                                "simulated_scan_profile",
+                                ]
 
+        # for profiles store min and max values
+        get_min_position = np.vectorize(lambda p:p.positions.min(), otypes=[int])
+        get_max_position = np.vectorize(lambda p:p.positions.max(), otypes=[int])
 
-class RandomIonSource(IonSource):
-    def __init__(self):
-        super().__init__()
+        if simulation_name == "simulated_frame_profile":
 
-    def ionize(self, data, allowed_charges: list = [1, 2, 3, 4], p: list = [0.1, 0.5, 0.3, 0.1]):
-        return choice(allowed_charges, data.shape[0], p=p)
+            self.peptides["frame_min"] = get_min_position(simulation_data)
+            self.peptides["frame_max"] = get_max_position(simulation_data)
 
+        elif simulation_name == "simulated_charge_profile":
+            ions_dict = {
+                "sequence":[],
+                "mz":[],
+                "charge":[],
+                "relative_abundancy":[]
+                }
+            sequences = self.peptides["sequence"].values
+            masses = self.peptides["mass_theoretical"].values
 
-class IonMobilitySeparation(ABC):
-    def __init__(self):
-        pass
+            for s, m, charge_profile in zip(sequences,masses,simulation_data):
+                for c,r in charge_profile:
+                    ions_dict["sequence"].append(s)
+                    ions_dict["charge"].append(c)
+                    ions_dict["relative_abundancy"].append(r)
+                    ions_dict["mz"].append(m/c + MASS_PROTON)
+            self.ions = pd.DataFrame(ions_dict)
 
-    @abstractmethod
-    def get_mobilities_and_ccs(self, data: pd.DataFrame) -> np.array:
-        pass
+            self.peptides["charge_min"] = get_min_position(simulation_data)
+            self.peptides["charge_max"] = get_max_position(simulation_data)
 
+        elif simulation_name == "simulated_scan_profile":
 
-class NeuralMobilitySeparation(IonMobilitySeparation):
+            self.ions["scan_min"] = get_min_position(simulation_data)
+            self.ions["scan_max"] = get_max_position(simulation_data)
 
-    def __init__(self, model_path: str, tokenizer: tf.keras.preprocessing.text.Tokenizer):
-        super().__init__()
-        self.model = tf.keras.models.load_model(model_path)
-        self.tokenizer = tokenizer
+        if simulation_name in accepted_peptide_simulations:
+            self.peptides[simulation_name] = simulation_data
 
-    def sequences_to_tokens(self, sequences: np.array) -> np.array:
-        print('tokenizing sequences...')
-        seq_lists = [list(s) for s in sequences]
-        tokens = self.tokenizer.texts_to_sequences(seq_lists)
-        tokens_padded = tf.keras.preprocessing.sequence.pad_sequences(tokens, 50, padding='post')
-        return tokens_padded
+        elif simulation_name in accepted_ion_simulations:
+            self.ions[simulation_name] = simulation_data
 
-    def sequences_tf_dataset(self, mz: np.array, charges: np.array, sequences: np.array,
-                             batched: bool = True, bs: int = 2048) -> tf.data.Dataset:
-        tokens = self.sequences_to_tokens(sequences)
-        mz = np.expand_dims(mz, 1)
-        c = tf.one_hot(charges - 1, depth=4)
-        print('generating tf dataset...')
-        pseudo_target = np.expand_dims(np.zeros_like(tokens[:, 0]), axis=1)
-
-        if batched:
-            return tf.data.Dataset.from_tensor_slices(((mz, c, tokens), pseudo_target)).batch(bs)
-        return tf.data.Dataset.from_tensor_slices(((mz, c, tokens), pseudo_target))
-
-    def get_mobilities_and_ccs(self, data: pd.DataFrame) -> np.array:
-        ds = self.sequences_tf_dataset(data['mz'], data['charge'], data['sequence-tokenized'])
-
-        mz = data['mz'].values
-
-        print('predicting mobilities...')
-        ccs, _ = self.model.predict(ds)
-        one_over_k0 = ccs_to_one_over_reduced_mobility(np.squeeze(ccs), mz, data['charge'].values)
-
-        return np.c_[ccs, one_over_k0]
+        else:
+            raise ValueError(f"Simulation name '{simulation_name}' is not defined")

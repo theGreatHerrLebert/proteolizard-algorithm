@@ -17,7 +17,7 @@ if __name__ == '__main__':
         if file.find('.txt') != -1:
             data = pd.read_table(path + file, low_memory=False)
             processed_data = preprocess_max_quant_evidence(data)
-            processed_data['sequence-tokenized'] = processed_data.apply(
+            processed_data['sequence_tokenized'] = processed_data.apply(
                 lambda r: preprocess_max_quant_sequence(r['sequence']), axis=1)
             single_experiments = list(set(processed_data['raw']))
 
