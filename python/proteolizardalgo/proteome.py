@@ -103,9 +103,10 @@ class ProteinSample:
         r_list = []
 
         for (gene, peptides) in V:
-            for pep in peptides:
+            for (pep_idx, pep) in enumerate(peptides):
                 if pep['sequence'].find('X') == -1:
-                    pep['id'] = gene
+                    pep['gene_id'] = gene
+                    pep['pep_id'] = f"{gene}_{pep_idx}"
                     pep['sequence'] = '_' + pep['sequence'] + '_'
                     pep['sequence_tokenized'] = preprocess_max_quant_sequence(pep['sequence'])
                     pep['mass_theoretical'] = get_mono_isotopic_weight(pep['sequence_tokenized'])
@@ -154,7 +155,8 @@ class ProteomicsExperimentDatabaseHandle:
 
     def load_frame(self, frame_id:int):
         query = (
-                "SELECT SeparatedPeptides.sequence, "
+                "SELECT SeparatedPeptides.pep_id, "
+                "SeparatedPeptides.sequence, "
                 "SeparatedPeptides.simulated_frame_profile, "
                 "SeparatedPeptides.mass_theoretical, "
                 "SeparatedPeptides.abundancy, "
@@ -166,7 +168,7 @@ class ProteomicsExperimentDatabaseHandle:
                 "Ions.simulated_scan_profile "
                 "FROM SeparatedPeptides "
                 "INNER JOIN Ions "
-                "ON SeparatedPeptides.sequence = Ions.sequence "
+                "ON SeparatedPeptides.pep_id = Ions.pep_id "
                 f"AND SeparatedPeptides.frame_min <= {frame_id} "
                 f"AND SeparatedPeptides.frame_max >= {frame_id} "
                 )
@@ -221,16 +223,19 @@ class ProteomicsExperimentSampleSlice:
         elif simulation_name == "simulated_charge_profile":
             ions_dict = {
                 "sequence":[],
+                "pep_id":[],
                 "mz":[],
                 "charge":[],
                 "relative_abundancy":[]
                 }
             sequences = self.peptides["sequence"].values
+            pep_ids = self.peptides["pep_id"].values
             masses = self.peptides["mass_theoretical"].values
 
-            for s, m, charge_profile in zip(sequences,masses,simulation_data):
-                for c,r in charge_profile:
+            for (s, pi, m, charge_profile) in zip(sequences, pep_ids, masses, simulation_data):
+                for (c, r) in charge_profile:
                     ions_dict["sequence"].append(s)
+                    ions_dict["pep_id"].append(pi)
                     ions_dict["charge"].append(c)
                     ions_dict["relative_abundancy"].append(r)
                     ions_dict["mz"].append(m/c + MASS_PROTON)
