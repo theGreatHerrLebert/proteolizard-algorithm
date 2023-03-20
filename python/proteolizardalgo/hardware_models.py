@@ -425,7 +425,7 @@ class IonMobilityProfileModel(Model):
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> NDArray:
         return super().simulate(sample, device)
 
-class NeuralMobilityApex(IonMobilityApexModel):
+class NeuralIonMobilityApex(IonMobilityApexModel):
 
     def __init__(self, model_path: str, tokenizer: tf.keras.preprocessing.text.Tokenizer):
         super().__init__()
