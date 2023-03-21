@@ -8,10 +8,9 @@ from numpy.typing import ArrayLike, NDArray
 import pandas as pd
 from scipy.stats import exponnorm, norm
 
-from proteolizardalgo.chemistry import  ccs_to_one_over_reduced_mobility, STANDARD_TEMPERATURE, STANDARD_PRESSURE, ELEMENTARY_CHARGE, K_BOLTZMANN, BufferGas
+from proteolizardalgo.chemistry import  STANDARD_TEMPERATURE, STANDARD_PRESSURE, CCS_K0_CONVERSION_CONSTANT, BufferGas
 from proteolizardalgo.proteome import ProteomicsExperimentSampleSlice
 from proteolizardalgo.feature import RTProfile, ScanProfile, ChargeProfile
-from proteolizardalgo.utility import ExponentialGaussianDistribution as emg
 
 
 class Device(ABC):
@@ -132,7 +131,7 @@ class Chromatography(Device):
         pass
 
     def irt_to_rt(self, irt):
-        return self._irt_to_rt_converter(irt)
+        return self.irt_to_rt_converter(irt)
 
     def frame_time_interval(self, frame_id:ArrayLike):
         frame_id = np.atleast_1d(frame_id)
@@ -310,11 +309,11 @@ class RandomIonSource(IonizationModel):
     def charge_probabilities(self, probabilities: ArrayLike):
         self._charge_probabilities = np.asarray(probabilities)
 
-    def simulate(self, ProteomicsExperimentSampleSlice, device: IonSource) -> List[ChargeProfile]:
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonSource) -> List[ChargeProfile]:
         if self.charge_probabilities.shape != self.allowed_charges.shape:
             raise ValueError("Number of allowed charges must fit to number of probabilities")
 
-        data = ProteomicsExperimentSampleSlice.peptides
+        data = sample.peptides
         charge = np.random.choice(self.allowed_charges, data.shape[0], p=self.charge_probabilities)
         rel_intensity = np.ones_like(charge)
         charge_profiles = []
@@ -366,7 +365,7 @@ class IonMobilitySeparation(Device):
 
     @property
     def scan_intervall(self):
-        return self._num_scans
+        return self._scan_intervall
 
     @scan_intervall.setter
     def scan_intervall(self, number:int):
@@ -413,10 +412,10 @@ class IonMobilitySeparation(Device):
         self._profile_model = model
 
     def scan_to_reduced_im_interval(self, scan_id: ArrayLike):
-        return scan_to_reduced_im_interval_converter(scan_id)
+        return self.scan_to_reduced_im_interval_converter(scan_id)
 
     def reduced_im_to_scan(self, ion_mobility):
-        return reduced_im_to_scan_converter(ion_mobility)
+        return self.reduced_im_to_scan_converter(ion_mobility)
 
     def scan_im_middle(self, scan_id: ArrayLike):
         return np.mean(self.scan_to_reduced_im_interval(scan_id), axis = 1)
@@ -461,6 +460,7 @@ class IonMobilitySeparation(Device):
         return reduced_ion_mobility*p_0/p*T/T_0
 
     def ccs_to_reduced_im(self, ccs:float, mz:float, charge:int):
+        # TODO Citation
         """
         Conversion of collision cross-section values (ccs)
         to reduced ion mobility according to
@@ -468,21 +468,20 @@ class IonMobilitySeparation(Device):
 
         :param ccs: collision cross-section (ccs)
         :type ccs: float
-        :param mz: Mass to charge ratio of peptide
+        :param mz: Mass (Da) to charge ratio of peptide
         :type mz: float
         :param charge: Charge of peptide
         :type charge: int
         :return: Reduced ion mobility
         :rtype: float
         """
-        e = ELEMENTARY_CHARGE
-        kb = K_BOLTZMANN
+
         T = self.temperature
-        μ = self.buffer_gas.mass*(mz*charge)/(self.buffer_gas.mass+mass)
-        N0 = self.buffer_gas.N0
+        mass = mz*charge
+        μ = self.buffer_gas.mass*mass/(self.buffer_gas.mass+mass)
         z = charge
 
-        K0 = 3/(16*ccs*N0)*z*e*np.sqrt(2*np.pi/(μ*kb*T))
+        K0 = CCS_K0_CONVERSION_CONSTANT*z*1/(np.sqrt(μ*T)*ccs)
         return K0
 
     def reduced_im_to_ccs(self, reduced_ion_mobility:float, mz:float, charge:int):
@@ -493,22 +492,21 @@ class IonMobilitySeparation(Device):
 
         :param reduced_ion_mobility: reduced ion mobility K0
         :type reduced_ion_mobility: float
-        :param mz: Mass to charge ratio of peptide
+        :param mz: Mass (Da) to charge ratio of peptide
         :type mz: float
         :param charge: Charge of peptide
         :type charge: int
         :return: Collision cross-section (ccs)
         :rtype: float
         """
-        e = ELEMENTARY_CHARGE
-        kb = K_BOLTZMANN
+
         T = self.temperature
-        μ = self.buffer_gas.mass*(mz*charge)/(self.buffer_gas.mass+mass)
-        N0 = self.buffer_gas.N0
+        mass = mz*charge
+        μ = self.buffer_gas.mass*mass/(self.buffer_gas.mass+mass)
         z = charge
         K0 = reduced_ion_mobility
 
-        ccs = 3/(16*K*N0)*z*e*np.sqrt(2*np.pi/(μ*kb*T))
+        ccs = CCS_K0_CONVERSION_CONSTANT*z*1/(np.sqrt(μ*T)*K0)
         return ccs
 
     @abstractmethod
@@ -529,7 +527,7 @@ class TrappedIon(IonMobilitySeparation):
         one_over_k0, scan_apex = self._apex_model.simulate(sample, self)
         # in irt and rt
         sample.add_simulation("simulated_scan_apex", scan_apex)
-        sample.add_simulation("simulated_one_over_k0", one_over_k0)
+        sample.add_simulation("simulated_k0", one_over_k0)
         # scan profile simulation
         scan_profile = self._profile_model.simulate(sample, self)
         sample.add_simulation("simulated_scan_profile", scan_profile)
@@ -586,9 +584,9 @@ class NeuralIonMobilityApex(IonMobilityApexModel):
 
         print('predicting mobilities...')
         ccs, _ = self.model.predict(ds)
-        K0s = self.ccs_to_reduced_im(np.squeeze(ccs), mz, data['charge'].values)
+        K0s = device.ccs_to_reduced_im(np.squeeze(ccs), mz, data['charge'].values)
 
-        scans = device.im_to_scan(K0s)
+        scans = device.reduced_im_to_scan(K0s)
         return K0s,scans
 
 class NormalIonMobilityProfileModel(IonMobilityProfileModel):
@@ -596,7 +594,7 @@ class NormalIonMobilityProfileModel(IonMobilityProfileModel):
         super().__init__()
 
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> List[ScanProfile]:
-        mus = sample.ions["simulated_one_over_k0"].values
+        mus = sample.ions["simulated_k0"].values
         profile_list = []
         for μ in mus:
             σ = 0.01 # must be sampled
@@ -607,16 +605,15 @@ class NormalIonMobilityProfileModel(IonMobilityProfileModel):
                             }
 
             normal = norm(loc=μ, scale=σ)
-            # start and end value (in one_over_k0)
+            # start and end value (k0)
             s_im, e_im = normal.ppf([0.01,0.99])
             # as scan ids, remember first scans elutes largest ions
-            e_scan, s_scan = device.im_to_scan(s_im), device.im_to_scan(e_im)
+            s_scan, e_scan = device.reduced_im_to_scan(s_im), device.reduced_im_to_scan(e_im)
 
             profile_scans = np.arange(s_scan-1,e_scan+1) # starting s_scan-1 is necessary here to include its end value for cdf interval
             profile_end_im = device.scan_im_upper(profile_scans)
             profile_end_cdfs = normal.cdf(profile_end_im)
-            # remember we are going backwards because of 1/k0 is shrinking with increasing scan numbers
-            profile_rel_intensities = np.abs(np.diff(profile_end_cdfs))
+            profile_rel_intensities = np.diff(profile_end_cdfs)
 
             profile_list.append(ScanProfile(profile_scans[1:],profile_rel_intensities,model_params))
         return profile_list

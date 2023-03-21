@@ -30,6 +30,13 @@ STANDARD_PRESSURE = 1e5
 ELEMENTARY_CHARGE = 1.602176634e-19
 # IUPAC BOLTZMANN'S CONSTANT
 K_BOLTZMANN = 1.380649e-23
+# constant part of Mason-Schamp equation
+# 3/16*sqrt(2π/kb)*e/N0 *
+# 1e20 (correction for using A² instead of m²) *
+# 1/sqrt(1.660 5402(10)×10−27 kg) (correction for using Da instead of kg) *
+# 10000 * (to get cm²/Vs from m²/Vs)
+# TODO CITATION
+CCS_K0_CONVERSION_CONSTANT = 18509.8632163405
 
 
 def get_mono_isotopic_weight(sequence_tokenized: list[str]) -> float:
@@ -51,9 +58,8 @@ def reduced_mobility_to_ccs(one_over_k0, mz, charge, mass_gas=28.013, temp=31.85
     :param temp: temperature of the drift gas in C°
     :param t_diff: factor to translate from C° to K
     """
-    SUMMARY_CONSTANT = 18509.8632163405
     reduced_mass = (mz * charge * mass_gas) / (mz * charge + mass_gas)
-    return (SUMMARY_CONSTANT * charge) / (np.sqrt(reduced_mass * (temp + t_diff)) * 1 / one_over_k0)
+    return (CCS_K0_CONVERSION_CONSTANT * charge) / (np.sqrt(reduced_mass * (temp + t_diff)) * 1 / one_over_k0)
 
 
 def ccs_to_one_over_reduced_mobility(ccs, mz, charge, mass_gas=28.013, temp=31.85, t_diff=273.15):
@@ -66,9 +72,8 @@ def ccs_to_one_over_reduced_mobility(ccs, mz, charge, mass_gas=28.013, temp=31.8
     :param temp: temperature of the drift gas in C°
     :param t_diff: factor to translate from C° to K
     """
-    SUMMARY_CONSTANT = 18509.8632163405
     reduced_mass = (mz * charge * mass_gas) / (mz * charge + mass_gas)
-    return  ((np.sqrt(reduced_mass * (temp + t_diff))) * ccs) / (SUMMARY_CONSTANT * charge)
+    return  ((np.sqrt(reduced_mass * (temp + t_diff))) * ccs) / (CCS_K0_CONVERSION_CONSTANT * charge)
 
 
 class ChemicalCompound:
@@ -167,7 +172,6 @@ class ChemicalCompound:
 
 class BufferGas(ChemicalCompound):
 
-    def __init__(self, formula: str, density: float):
+    def __init__(self, formula: str):
         super().__init__(formula)
-        self.N0 = density
 

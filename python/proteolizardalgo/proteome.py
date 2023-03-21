@@ -207,7 +207,7 @@ class ProteomicsExperimentSampleSlice:
 
         accepted_ion_simulations = [
                                 "simulated_scan_apex",
-                                "simulated_one_over_k0",
+                                "simulated_k0",
                                 "simulated_scan_profile",
                                 ]
 
