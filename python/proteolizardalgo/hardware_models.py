@@ -8,7 +8,7 @@ from numpy.typing import ArrayLike, NDArray
 import pandas as pd
 from scipy.stats import exponnorm, norm
 
-from proteolizardalgo.chemistry import  ccs_to_one_over_reduced_mobility
+from proteolizardalgo.chemistry import  ccs_to_one_over_reduced_mobility, STANDARD_TEMPERATURE, STANDARD_PRESSURE, ELEMENTARY_CHARGE, K_BOLTZMANN, BufferGas
 from proteolizardalgo.proteome import ProteomicsExperimentSampleSlice
 from proteolizardalgo.feature import RTProfile, ScanProfile, ChargeProfile
 from proteolizardalgo.utility import ExponentialGaussianDistribution as emg
@@ -17,6 +17,47 @@ from proteolizardalgo.utility import ExponentialGaussianDistribution as emg
 class Device(ABC):
     def __init__(self, name:str):
         self.name = name
+        self._temperature = STANDARD_TEMPERATURE
+        self._pressure = STANDARD_PRESSURE
+
+    @property
+    def temperature(self):
+        """
+        Get device temperature
+
+        :return: Temperature of device in Kelvin.
+        :rtype: float
+        """
+        return self._temperature
+
+    @temperature.setter
+    def temperature(self, T:float):
+        """
+        Set device temperature
+
+        :param T: Temperature in Kelvin.
+        :type T: float
+        """
+        self._temperature = T
+
+    @property
+    def pressure(self):
+        """
+        Get device pressure
+
+        :return: Pressure of device in Pa.
+        :rtype: float
+        """
+        return self._pressure
+
+    @pressure.setter
+    def pressure(self, p:float):
+        """
+        Set device pressure
+        :param p: Pressure in Pa.
+        :type p: float
+        """
+        self._pressure = p
 
     @abstractmethod
     def run(self, sample: ProteomicsExperimentSampleSlice):
@@ -280,15 +321,48 @@ class RandomIonSource(IonizationModel):
         for c,i in zip(charge, rel_intensity):
             charge_profiles.append(ChargeProfile([c],[i],model_params={"name":"RandomIonSource"}))
         return charge_profiles
+
 class IonMobilitySeparation(Device):
     def __init__(self, name:str = "IonMobilityDevice"):
         super().__init__(name)
+        # models
         self._apex_model = None
         self._profile_model = None
+
+        # hardware parameter
         self._scan_intervall = 1
         self._scan_time = None
         self._scan_id_min = None
         self._scan_id_max = None
+        self._buffer_gas = None
+
+        # converters
+        self._reduced_im_to_scan_converter = None
+        self._scan_to_reduced_im_interval_converter = None
+
+    @property
+    def reduced_im_to_scan_converter(self):
+        return self._reduced_im_to_scan_converter
+
+    @reduced_im_to_scan_converter.setter
+    def reduced_im_to_scan_converter(self, converter:callable):
+        self._reduced_im_to_scan_converter = converter
+
+    @property
+    def scan_to_reduced_im_interval_converter(self):
+        return self._scan_to_reduced_im_interval_converter
+
+    @scan_to_reduced_im_interval_converter.setter
+    def scan_to_reduced_im_interval_converter(self, converter:callable):
+        self._scan_to_reduced_im_interval_converter = converter
+
+    @property
+    def buffer_gas(self):
+        return self._buffer_gas
+
+    @buffer_gas.setter
+    def buffer_gas(self, gas: BufferGas):
+        self._buffer_gas = gas
 
     @property
     def scan_intervall(self):
@@ -338,27 +412,107 @@ class IonMobilitySeparation(Device):
     def profile_model(self, model: IonMobilityProfileModel):
         self._profile_model = model
 
+    def scan_to_reduced_im_interval(self, scan_id: ArrayLike):
+        return scan_to_reduced_im_interval_converter(scan_id)
 
+    def reduced_im_to_scan(self, ion_mobility):
+        return reduced_im_to_scan_converter(ion_mobility)
 
     def scan_im_middle(self, scan_id: ArrayLike):
-        return np.mean(self.scan_im_interval(scan_id), axis = 1)
+        return np.mean(self.scan_to_reduced_im_interval(scan_id), axis = 1)
 
     def scan_im_lower(self, scan_id: ArrayLike):
-        return self.scan_im_interval(scan_id)[:,0]
+        return self.scan_to_reduced_im_interval(scan_id)[:,0]
 
     def scan_im_upper(self, scan_id:ArrayLike):
-        return self.scan_im_interval(scan_id)[:,1]
+        return self.scan_to_reduced_im_interval(scan_id)[:,1]
+
+    def im_to_reduced_im(self, ion_mobility: float, p_0: float = STANDARD_PRESSURE, T_0: float = STANDARD_TEMPERATURE):
+        """
+        Calculate reduced ion mobility K_0
+        (normalized to standard pressure p_0
+        and standard temperature T_0), from
+        ion mobility K.
+
+        K_0 = K * p/p_0 * T_0/T
+
+        [1] J. N. Dodds and E. S. Baker,
+        “Ion mobility spectrometry: fundamental concepts,
+        instrumentation, applications, and the road ahead,”
+        Journal of the American Society for Mass Spectrometry,
+        vol. 30, no. 11, pp. 2185–2195, 2019,
+        doi: 10.1007/s13361-019-02288-2.
+
+        :param ion_mobility: Ion mobility K to
+            normalize to standard conditions
+        :param p_0: Standard pressure (Pa).
+        :param T_0: Standard temperature (K).
+        """
+        T = self.temperature
+        p = self.pressure
+        return ion_mobility*p/p_0*T_0/T
+
+    def reduced_im_to_im(self, reduced_ion_mobility: float, p_0: float = STANDARD_PRESSURE, T_0: float = STANDARD_TEMPERATURE):
+        """
+        Inverse of `.im_to_reduced_im()`
+        """
+        T = self.temperature
+        p = self.pressure
+        return reduced_ion_mobility*p_0/p*T/T_0
+
+    def ccs_to_reduced_im(self, ccs:float, mz:float, charge:int):
+        """
+        Conversion of collision cross-section values (ccs)
+        to reduced ion mobility according to
+        Mason-Schamp equation.
+
+        :param ccs: collision cross-section (ccs)
+        :type ccs: float
+        :param mz: Mass to charge ratio of peptide
+        :type mz: float
+        :param charge: Charge of peptide
+        :type charge: int
+        :return: Reduced ion mobility
+        :rtype: float
+        """
+        e = ELEMENTARY_CHARGE
+        kb = K_BOLTZMANN
+        T = self.temperature
+        μ = self.buffer_gas.mass*(mz*charge)/(self.buffer_gas.mass+mass)
+        N0 = self.buffer_gas.N0
+        z = charge
+
+        K0 = 3/(16*ccs*N0)*z*e*np.sqrt(2*np.pi/(μ*kb*T))
+        return K0
+
+    def reduced_im_to_ccs(self, reduced_ion_mobility:float, mz:float, charge:int):
+        """
+        Conversion of reduced ion mobility
+        to collision cross-section values (ccs)
+        according to Mason-Schamp equation.
+
+        :param reduced_ion_mobility: reduced ion mobility K0
+        :type reduced_ion_mobility: float
+        :param mz: Mass to charge ratio of peptide
+        :type mz: float
+        :param charge: Charge of peptide
+        :type charge: int
+        :return: Collision cross-section (ccs)
+        :rtype: float
+        """
+        e = ELEMENTARY_CHARGE
+        kb = K_BOLTZMANN
+        T = self.temperature
+        μ = self.buffer_gas.mass*(mz*charge)/(self.buffer_gas.mass+mass)
+        N0 = self.buffer_gas.N0
+        z = charge
+        K0 = reduced_ion_mobility
+
+        ccs = 3/(16*K*N0)*z*e*np.sqrt(2*np.pi/(μ*kb*T))
+        return ccs
 
     @abstractmethod
     def run(self, sample: ProteomicsExperimentSampleSlice):
-        pass
-
-    @abstractmethod
-    def scan_im_interval(self, scan_id: ArrayLike):
-        pass
-
-    @abstractmethod
-    def im_to_scan(self, one_over_k0):
         pass
 
 
@@ -369,24 +523,6 @@ class TrappedIon(IonMobilitySeparation):
         super().__init__()
         self._scan_id_min = 1
         self._scan_id_max = 918
-        self._slope = -880.57513791
-        self._intercept = 1454.29035506
-
-    @property
-    def slope(self):
-        return self._slope
-
-    @slope.setter
-    def slope(self, slope:float):
-        self._slope = slope
-
-    @property
-    def intercept(self):
-        return self._intercept
-
-    @intercept.setter
-    def intercept(self, intercept:float):
-        self._intercept = intercept
 
     def run(self, sample: ProteomicsExperimentSampleSlice):
         # scan apex simulation
@@ -398,16 +534,6 @@ class TrappedIon(IonMobilitySeparation):
         scan_profile = self._profile_model.simulate(sample, self)
         sample.add_simulation("simulated_scan_profile", scan_profile)
 
-    def scan_im_interval(self, scan_id: ArrayLike):
-        scan_id = np.atleast_1d(scan_id)
-        lower = ( scan_id    - self.intercept ) / self.slope
-        upper = ((scan_id+1) - self.intercept ) / self.slope
-        return np.stack([lower, upper], axis=1)
-
-
-    def im_to_scan(self, one_over_k0):
-        # TODO more approbriate function here ?
-        return np.round(one_over_k0 * self.slope + self.intercept).astype(np.int16)
 
 class IonMobilityApexModel(Model):
     def __init__(self):
@@ -460,10 +586,10 @@ class NeuralIonMobilityApex(IonMobilityApexModel):
 
         print('predicting mobilities...')
         ccs, _ = self.model.predict(ds)
-        one_over_k0 = ccs_to_one_over_reduced_mobility(np.squeeze(ccs), mz, data['charge'].values)
+        K0s = self.ccs_to_reduced_im(np.squeeze(ccs), mz, data['charge'].values)
 
-        scans = device.im_to_scan(one_over_k0)
-        return one_over_k0,scans
+        scans = device.im_to_scan(K0s)
+        return K0s,scans
 
 class NormalIonMobilityProfileModel(IonMobilityProfileModel):
     def __init__(self):
