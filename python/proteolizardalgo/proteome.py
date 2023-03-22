@@ -154,13 +154,15 @@ class ProteomicsExperimentDatabaseHandle:
         for chunk in self.__chunk_generator:
             yield(ProteomicsExperimentSampleSlice(peptides = chunk))
 
-    def load_frame(self, frame_id:int):
+    def load_frames(self, frame_range:Tuple[int,int]):
         query = (
                 "SELECT SeparatedPeptides.pep_id, "
                 "SeparatedPeptides.sequence, "
                 "SeparatedPeptides.simulated_frame_profile, "
                 "SeparatedPeptides.mass_theoretical, "
                 "SeparatedPeptides.abundancy, "
+                "SeparatedPeptides.frame_min, "
+                "SeparatedPeptides.frame_max, "
                 "Ions.mz, "
                 "Ions.charge, "
                 "Ions.relative_abundancy, "
@@ -171,8 +173,8 @@ class ProteomicsExperimentDatabaseHandle:
                 "FROM SeparatedPeptides "
                 "INNER JOIN Ions "
                 "ON SeparatedPeptides.pep_id = Ions.pep_id "
-                f"AND SeparatedPeptides.frame_min <= {frame_id} "
-                f"AND SeparatedPeptides.frame_max >= {frame_id} "
+                f"AND SeparatedPeptides.frame_min < {frame_range[1]} "
+                f"AND SeparatedPeptides.frame_max >= {frame_range[0]} "
                 )
         df = pd.read_sql(query, self.con)
 

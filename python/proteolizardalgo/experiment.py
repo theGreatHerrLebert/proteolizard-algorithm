@@ -1,8 +1,8 @@
 import os
 from abc import ABC, abstractmethod
 import pandas as pd
+import numpy as np
 from tqdm import tqdm
-
 from proteolizarddata.data import MzSpectrum, TimsFrame
 from proteolizardalgo.proteome import PeptideDigest, ProteomicsExperimentSampleSlice, ProteomicsExperimentDatabaseHandle
 from proteolizardalgo.isotopes import AveragineGenerator
@@ -84,4 +84,55 @@ class LcImsMsMs(ProteomicsExperiment):
             self.mz_separation_method.run(data_chunk)
             self.database.update(data_chunk)
 
-        #self.assembly_method.run()
+        # typically for timstof start with 1 and end with 918
+        scan_id_min = self.ion_mobility_separation_method.scan_id_min
+        scan_id_max = self.ion_mobility_separation_method.scan_id_max
+
+        # construct signal data set
+        signal = {f_id:{s_id:[] for s_id in range(scan_id_min, scan_id_max +1)} for f_id in range(self.lc_method.num_frames) }
+        frame_chunk_size = 100
+        for f_r in tqdm(range(np.ceil(self.lc_method.num_frames/frame_chunk_size).astype(int))):
+
+            # load all ions in that frame range
+            frame_range_start = f_r * frame_chunk_size
+            frame_range_end = frame_range_start + frame_chunk_size
+            peptides_in_frames = self.database.load_frames((frame_range_start, frame_range_end))
+
+            # skip if no peptides in frame
+            if peptides_in_frames.shape[0] == 0:
+                continue
+
+            for _,row in peptides_in_frames.iterrows():
+
+                frame_start = max(frame_range_start, row["frame_min"])
+                frame_end = min(frame_range_end-1, row["frame_max"]) # -1 here because frame_range_end is covered by next frame range
+
+                scan_start = max(scan_id_min, row["scan_min"])
+                scan_end = min(scan_id_max, row["scan_max"])
+
+                frame_profile = row["simulated_frame_profile"]
+                scan_profile = row["simulated_scan_profile"]
+
+                charge_abundance = row["abundancy"]*row["relative_abundancy"]
+
+                spectrum = row["simulated_mz_spectrum"]
+
+                # frame start and end inclusive
+                for f_id in range(frame_start, frame_end+1):
+                    # scan start and end inclusive
+                    for s_id in range(scan_start, scan_end+1):
+
+                        abundance = charge_abundance*frame_profile[f_id]*scan_profile[s_id]
+                        rel_to_default_abundance = abundance/self.mz_separation_method.model.default_abundance
+
+                        signal[f_id][s_id].append(rel_to_default_abundance*spectrum)
+
+        signal_assembled = {f_id:{s_id:MzSpectrum(None, f_id, s_id,[],[]) for s_id in range(scan_id_min, scan_id_max +1)} for f_id in range(self.lc_method.num_frames) }
+
+        for (f_id,frame_dict) in tqdm(signal.items()):
+            for (s_id,spectra_list) in frame_dict.items():
+                for s in spectra_list:
+                    signal_assembled[f_id][s_id] += s
+                signal_assembled[f_id][s_id].to_resolution(self.mz_separation_method.resolution)
+
+        return signal_assembled
