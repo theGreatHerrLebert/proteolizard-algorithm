@@ -140,14 +140,15 @@ class LcImsMsMs(ProteomicsExperiment):
                 if frame_signal[s_id].sum_intensity() <= 0:
                     del frame_signal[s_id]
                 else:
-                    frame_signal[s_id] = frame_signal[s_id].to_resolution(self.mz_separation_method.resolution).to_jsons(only_spectrum=True)
+                    frame_signal[s_id] = frame_signal[s_id].to_resolution(self.mz_separation_method.resolution).to_centroided(1, np.power(10,(self.mz_separation_method.resolution -1) ) ).to_jsons(only_spectrum=True)
             output_buffer[f_id] = frame_signal
 
             if (f_id+1) % 500 == 1:
-                continue
+
                 with open(self.output_file, "a") as output:
                     for frame, frame_signal in output_buffer.items():
                         output.write(f"{frame}: {json.dumps(frame_signal)} , \n")
+
                 output_buffer.clear()
         with open(self.output_file, "a") as output:
                 output.write("\n}")
