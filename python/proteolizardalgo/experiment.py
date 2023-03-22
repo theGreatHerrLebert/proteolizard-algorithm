@@ -1,4 +1,5 @@
 import os
+import json
 from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
@@ -13,7 +14,7 @@ class ProteomicsExperiment(ABC):
         folder = os.path.dirname(path)
         if not os.path.exists(folder):
             os.mkdir(folder)
-
+        self.output_file = f"{os.path.dirname(path)}/output.json"
         self.database = ProteomicsExperimentDatabaseHandle(path)
         self.loaded_sample = None
 
@@ -125,14 +126,28 @@ class LcImsMsMs(ProteomicsExperiment):
                         abundance = charge_abundance*frame_profile[f_id]*scan_profile[s_id]
                         rel_to_default_abundance = abundance/self.mz_separation_method.model.default_abundance
 
-                        signal[f_id][s_id].append(rel_to_default_abundance*spectrum)
+                        signal[f_id][s_id].append([spectrum,rel_to_default_abundance])
+        with open(self.output_file, "w") as output:
+                output.write("{\n")
 
-        signal_assembled = {f_id:{s_id:MzSpectrum(None, f_id, s_id,[],[]) for s_id in range(scan_id_min, scan_id_max +1)} for f_id in range(self.lc_method.num_frames) }
-
+        output_buffer = {}
         for (f_id,frame_dict) in tqdm(signal.items()):
+            frame_signal = {s_id:MzSpectrum(None, f_id, s_id,[],[]) for s_id in range(scan_id_min, scan_id_max +1)}
             for (s_id,spectra_list) in frame_dict.items():
-                for s in spectra_list:
-                    signal_assembled[f_id][s_id] += s
-                signal_assembled[f_id][s_id].to_resolution(self.mz_separation_method.resolution)
+                for (s,r_a) in spectra_list:
+                    frame_signal[s_id] += s*r_a
 
-        return signal_assembled
+                if frame_signal[s_id].sum_intensity() <= 0:
+                    del frame_signal[s_id]
+                else:
+                    frame_signal[s_id] = frame_signal[s_id].to_resolution(self.mz_separation_method.resolution).to_jsons(only_spectrum=True)
+            output_buffer[f_id] = frame_signal
+
+            if (f_id+1) % 500 == 1:
+                continue
+                with open(self.output_file, "a") as output:
+                    for frame, frame_signal in output_buffer.items():
+                        output.write(f"{frame}: {json.dumps(frame_signal)} , \n")
+                output_buffer.clear()
+        with open(self.output_file, "a") as output:
+                output.write("\n}")
