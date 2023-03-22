@@ -623,6 +623,15 @@ class MzSeparation(Device):
     def __init__(self, name:str = "MassSpectrometer"):
         super().__init__(name)
         self._model = None
+        self._resolution = 3
+
+    @property
+    def resolution(self):
+        return self._resolution
+
+    @resolution.setter
+    def resolution(self, res: int):
+        self._resolution = res
 
     @property
     def model(self):
@@ -646,7 +655,15 @@ class TOF(MzSeparation):
 
 class MzSeparationModel(Model):
     def __init__(self):
-        pass
+        self._default_abundance = 1e4
+
+    @property
+    def default_abundance(self):
+        return self._default_abundance
+
+    @default_abundance.setter
+    def default_abundance(self, abundance:int):
+        self._default_abundance = abundance
 
     @abstractmethod
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: MzSeparation):
@@ -668,6 +685,6 @@ class AveragineModel(MzSeparationModel):
         charges = joined_df["charge"].values
         spectra = []
         for (m, c) in zip(masses, charges):
-            spectrum = avg.generate_spectrum(m,c,-1,-1,centroided=False)
+            spectrum = avg.generate_spectrum(m,c,-1,-1,amp = self.default_abundance, centroided=False)
             spectra.append(spectrum)
         return spectra

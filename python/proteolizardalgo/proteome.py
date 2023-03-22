@@ -166,7 +166,8 @@ class ProteomicsExperimentDatabaseHandle:
                 "Ions.relative_abundancy, "
                 "Ions.scan_min, "
                 "Ions.scan_max, "
-                "Ions.simulated_scan_profile "
+                "Ions.simulated_scan_profile, "
+                "Ions.simulated_mz_spectrum "
                 "FROM SeparatedPeptides "
                 "INNER JOIN Ions "
                 "ON SeparatedPeptides.pep_id = Ions.pep_id "
@@ -178,6 +179,7 @@ class ProteomicsExperimentDatabaseHandle:
         # unzip jsons
         df.loc[:,"simulated_scan_profile"] = df["simulated_scan_profile"].transform(lambda sp: ScanProfile(jsons=sp))
         df.loc[:,"simulated_frame_profile"] = df["simulated_frame_profile"].transform(lambda rp: RTProfile(jsons=rp))
+        df.loc[:,"simulated_mz_spectrum"] = df["simulated_mz_spectrum"].transform(lambda s: MzSpectrum.from_jsons(jsons=s))
 
         return df
 
