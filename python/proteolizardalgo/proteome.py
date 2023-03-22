@@ -5,6 +5,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 import pandas as pd
 import sqlite3
+from proteolizarddata.data import MzSpectrum
 from proteolizardalgo.feature import RTProfile, ScanProfile, ChargeProfile
 from proteolizardalgo.utility import preprocess_max_quant_sequence, TokenSequence
 from proteolizardalgo.chemistry import get_mono_isotopic_weight, MASS_PROTON
@@ -186,6 +187,8 @@ class ProteomicsExperimentDatabaseHandle:
             return
         if isinstance(column.iloc[0], (RTProfile,ScanProfile,ChargeProfile)):
             return column.apply(lambda x: x.jsons)
+        elif isinstance(column.iloc[0], MzSpectrum):
+            return column.apply(lambda x: x.to_jsons(only_spectrum = True))
         else:
             return column
 
@@ -209,6 +212,7 @@ class ProteomicsExperimentSampleSlice:
                                 "simulated_scan_apex",
                                 "simulated_k0",
                                 "simulated_scan_profile",
+                                "simulated_mz_spectrum",
                                 ]
 
         # for profiles store min and max values

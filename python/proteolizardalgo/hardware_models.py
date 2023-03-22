@@ -11,7 +11,7 @@ from scipy.stats import exponnorm, norm
 from proteolizardalgo.chemistry import  STANDARD_TEMPERATURE, STANDARD_PRESSURE, CCS_K0_CONVERSION_CONSTANT, BufferGas
 from proteolizardalgo.proteome import ProteomicsExperimentSampleSlice
 from proteolizardalgo.feature import RTProfile, ScanProfile, ChargeProfile
-
+from proteolizardalgo.isotopes import AveragineGenerator
 
 class Device(ABC):
     def __init__(self, name:str):
@@ -641,7 +641,8 @@ class TOF(MzSeparation):
         super().__init__(name)
 
     def run(self, sample: ProteomicsExperimentSampleSlice):
-        pass
+        spectra = self.model.simulate(sample, self)
+        sample.add_simulation("simulated_mz_spectrum", spectra)
 
 class MzSeparationModel(Model):
     def __init__(self):
@@ -651,9 +652,22 @@ class MzSeparationModel(Model):
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: MzSeparation):
         return super().simulate(sample, device)
 
-class TOFModel(MzSeparationModel):
+class AveragineModel(MzSeparationModel):
     def __init__(self):
         super().__init__()
 
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: MzSeparation):
-        return super().simulate(sample, device)
+
+        avg = AveragineGenerator()
+        # right join here to keep order of keys in right df
+        joined_df = pd.merge(sample.peptides[["pep_id","mass_theoretical"]],
+                        sample.ions[["pep_id","charge"]],
+                        how = "right",
+                        on = "pep_id")
+        masses = joined_df["mass_theoretical"].values
+        charges = joined_df["charge"].values
+        spectra = []
+        for (m, c) in zip(masses, charges):
+            spectrum = avg.generate_spectrum(m,c,-1,-1,centroided=False)
+            spectra.append(spectrum)
+        return spectra
