@@ -68,7 +68,7 @@ class ProteomicsExperiment(ABC):
         pass
 
 
-class TimsTOFExperiment(ProteomicsExperiment):
+class LcImsMsMs(ProteomicsExperiment):
     def __init__(self, path:str):
         super().__init__(path)
 
