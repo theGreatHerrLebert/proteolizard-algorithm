@@ -132,22 +132,24 @@ class LcImsMsMs(ProteomicsExperiment):
 
         output_buffer = {}
         for (f_id,frame_dict) in tqdm(signal.items()):
-            frame_signal = {s_id:MzSpectrum(None, f_id, s_id,[],[]) for s_id in range(scan_id_min, scan_id_max +1)}
+            frame_signal = {}
             for (s_id,spectra_list) in frame_dict.items():
+                if spectra_list == []:
+                    continue
+                frame_signal[s_id] = MzSpectrum(None,f_id, s_id, [], [])
                 for (s,r_a) in spectra_list:
                     frame_signal[s_id] += s*r_a
-
-                if frame_signal[s_id].sum_intensity() <= 0:
+                if frame_signal[s_id].is_empty():
                     del frame_signal[s_id]
                 else:
-                    frame_signal[s_id] = frame_signal[s_id].to_resolution(self.mz_separation_method.resolution).to_centroided(1, np.power(10,(self.mz_separation_method.resolution -1) ) ).to_jsons(only_spectrum=True)
+                    frame_signal[s_id] = frame_signal[s_id].to_resolution(self.mz_separation_method.resolution).to_centroided(1, 1/np.power(10,(self.mz_separation_method.resolution-1)) )
             output_buffer[f_id] = frame_signal
 
             if (f_id+1) % 500 == 1:
 
                 with open(self.output_file, "a") as output:
                     for frame, frame_signal in output_buffer.items():
-                        output.write(f"{frame}: {json.dumps(frame_signal)} , \n")
+                        output.write(f"{frame}: {frame_signal} , \n")
 
                 output_buffer.clear()
         with open(self.output_file, "a") as output:
