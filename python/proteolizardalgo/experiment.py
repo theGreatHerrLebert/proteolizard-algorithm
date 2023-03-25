@@ -1,5 +1,6 @@
 import os
-import json
+from multiprocessing import Pool
+import functools
 from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
@@ -68,6 +69,10 @@ class ProteomicsExperiment(ABC):
     def run(self):
         pass
 
+    @abstractmethod
+    def assemble(self):
+        pass
+
 
 class LcImsMsMs(ProteomicsExperiment):
     def __init__(self, path:str):
@@ -85,53 +90,49 @@ class LcImsMsMs(ProteomicsExperiment):
             self.mz_separation_method.run(data_chunk)
             self.database.update(data_chunk)
 
-        # typically for timstof start with 1 and end with 918
-        scan_id_min = self.ion_mobility_separation_method.scan_id_min
-        scan_id_max = self.ion_mobility_separation_method.scan_id_max
+        self.assemble()
+    @staticmethod
+    def _assemble_frame_range(frame_range_start, frame_range_end, ions_in_split, scan_id_min, scan_id_max, default_abundance, resolution):
+
+
+
+        # skip if no peptides in split
+        if ions_in_split.shape[0] == 0:
+            return {}
+
+        ions_in_split.loc[:,"simulated_mz_spectrum"] = ions_in_split["simulated_mz_spectrum"].transform(lambda s: MzSpectrum.from_jsons(jsons=s))
 
         # construct signal data set
-        signal = {f_id:{s_id:[] for s_id in range(scan_id_min, scan_id_max +1)} for f_id in range(self.lc_method.num_frames) }
-        frame_chunk_size = 100
-        for f_r in tqdm(range(np.ceil(self.lc_method.num_frames/frame_chunk_size).astype(int))):
+        signal = {f_id:{s_id:[] for s_id in range(scan_id_min, scan_id_max +1)} for f_id in range(frame_range_start, frame_range_end) }
 
-            # load all ions in that frame range
-            frame_range_start = f_r * frame_chunk_size
-            frame_range_end = frame_range_start + frame_chunk_size
-            peptides_in_frames = self.database.load_frames((frame_range_start, frame_range_end))
+        for _,row in ions_in_split.iterrows():
 
-            # skip if no peptides in frame
-            if peptides_in_frames.shape[0] == 0:
-                continue
+            ion_frame_start = max(frame_range_start, row["frame_min"])
+            ion_frame_end = min(frame_range_end-1, row["frame_max"]) # -1 here because frame_range_end is covered by next frame range
 
-            for _,row in peptides_in_frames.iterrows():
+            ion_scan_start = max(scan_id_min, row["scan_min"])
+            ion_scan_end = min(scan_id_max, row["scan_max"])
 
-                frame_start = max(frame_range_start, row["frame_min"])
-                frame_end = min(frame_range_end-1, row["frame_max"]) # -1 here because frame_range_end is covered by next frame range
+            ion_frame_profile = row["simulated_frame_profile"]
+            ion_scan_profile = row["simulated_scan_profile"]
 
-                scan_start = max(scan_id_min, row["scan_min"])
-                scan_end = min(scan_id_max, row["scan_max"])
+            ion_charge_abundance = row["abundancy"]*row["relative_abundancy"]
 
-                frame_profile = row["simulated_frame_profile"]
-                scan_profile = row["simulated_scan_profile"]
+            ion_spectrum = row["simulated_mz_spectrum"]
 
-                charge_abundance = row["abundancy"]*row["relative_abundancy"]
+            # frame start and end inclusive
+            for f_id in range(ion_frame_start, ion_frame_end+1):
+                # scan start and end inclusive
+                for s_id in range(ion_scan_start, ion_scan_end+1):
 
-                spectrum = row["simulated_mz_spectrum"]
+                    abundance = ion_charge_abundance*ion_frame_profile[f_id]*ion_scan_profile[s_id]
+                    rel_to_default_abundance = abundance/default_abundance
 
-                # frame start and end inclusive
-                for f_id in range(frame_start, frame_end+1):
-                    # scan start and end inclusive
-                    for s_id in range(scan_start, scan_end+1):
-
-                        abundance = charge_abundance*frame_profile[f_id]*scan_profile[s_id]
-                        rel_to_default_abundance = abundance/self.mz_separation_method.model.default_abundance
-
-                        signal[f_id][s_id].append([spectrum,rel_to_default_abundance])
-        with open(self.output_file, "w") as output:
-                output.write("{\n")
+                    signal[f_id][s_id].append([ion_spectrum,rel_to_default_abundance])
 
         output_buffer = {}
-        for (f_id,frame_dict) in tqdm(signal.items()):
+
+        for (f_id,frame_dict) in signal.items():
             frame_signal = {}
             for (s_id,spectra_list) in frame_dict.items():
                 if spectra_list == []:
@@ -142,15 +143,42 @@ class LcImsMsMs(ProteomicsExperiment):
                 if frame_signal[s_id].is_empty():
                     del frame_signal[s_id]
                 else:
-                    frame_signal[s_id] = frame_signal[s_id].to_resolution(self.mz_separation_method.resolution).to_centroided(1, 1/np.power(10,(self.mz_separation_method.resolution-1)) )
+                    frame_signal[s_id] = str(frame_signal[s_id].to_resolution(resolution).to_centroided(1, 1/np.power(10,(resolution-1)) ))
             output_buffer[f_id] = frame_signal
 
-            if (f_id+1) % 500 == 1:
+        return output_buffer
 
-                with open(self.output_file, "a") as output:
+
+    def assemble(self, frame_chunk_size = 60, num_processes = 8):
+
+        with open(self.output_file, "w") as output:
+            output.write("{\n")
+                # typically for timstof start with 1 and end with 918
+        scan_id_min = self.ion_mobility_separation_method.scan_id_min
+        scan_id_max = self.ion_mobility_separation_method.scan_id_max
+        default_abundance = self.mz_separation_method.model.default_abundance
+        resolution = self.mz_separation_method.resolution
+
+        assemble_frame_range = functools.partial(self._assemble_frame_range, scan_id_min = scan_id_min, scan_id_max = scan_id_max, default_abundance = default_abundance, resolution = resolution)
+
+        for f_r in tqdm(range(np.ceil(self.lc_method.num_frames/frame_chunk_size).astype(int))):
+            frame_range_start = f_r*frame_chunk_size
+            frame_range_end = frame_range_start+frame_chunk_size
+            ions_in_frames = self.database.load_frames((frame_range_start, frame_range_end), spectra_as_jsons = True)
+
+            split_positions = np.linspace(frame_range_start, frame_range_end, num= num_processes+1).astype(int)
+            split_start = split_positions[:num_processes]
+            split_end = split_positions[1:]
+            split_data = [ions_in_frames.loc[lambda x: (x["frame_min"] < f_split_max) & (x["frame_max"] >= f_split_min)] for (f_split_min, f_split_max) in zip(split_start,split_end)]
+
+            with Pool(num_processes) as pool:
+                t = pool.starmap(assemble_frame_range,   zip(split_start, split_end, split_data) )
+
+            with open(self.output_file, "a") as output:
+                for output_buffer in t:
                     for frame, frame_signal in output_buffer.items():
                         output.write(f"{frame}: {frame_signal} , \n")
 
-                output_buffer.clear()
         with open(self.output_file, "a") as output:
-                output.write("\n}")
+            output.write("\n}")
+

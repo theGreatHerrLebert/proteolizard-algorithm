@@ -154,7 +154,7 @@ class ProteomicsExperimentDatabaseHandle:
         for chunk in self.__chunk_generator:
             yield(ProteomicsExperimentSampleSlice(peptides = chunk))
 
-    def load_frames(self, frame_range:Tuple[int,int]):
+    def load_frames(self, frame_range:Tuple[int,int], spectra_as_jsons = False):
         query = (
                 "SELECT SeparatedPeptides.pep_id, "
                 "SeparatedPeptides.sequence, "
@@ -181,7 +181,10 @@ class ProteomicsExperimentDatabaseHandle:
         # unzip jsons
         df.loc[:,"simulated_scan_profile"] = df["simulated_scan_profile"].transform(lambda sp: ScanProfile(jsons=sp))
         df.loc[:,"simulated_frame_profile"] = df["simulated_frame_profile"].transform(lambda rp: RTProfile(jsons=rp))
-        df.loc[:,"simulated_mz_spectrum"] = df["simulated_mz_spectrum"].transform(lambda s: MzSpectrum.from_jsons(jsons=s))
+        if spectra_as_jsons:
+            return df
+        else:
+            df.loc[:,"simulated_mz_spectrum"] = df["simulated_mz_spectrum"].transform(lambda s: MzSpectrum.from_jsons(jsons=s))
 
         return df
 
