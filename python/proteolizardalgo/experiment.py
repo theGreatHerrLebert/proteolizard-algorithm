@@ -149,7 +149,7 @@ class LcImsMsMs(ProteomicsExperiment):
         return output_buffer
 
 
-    def assemble(self, frame_chunk_size = 60, num_processes = 8):
+    def assemble(self, frame_chunk_size = 120, num_processes = 2):
 
         with open(self.output_file, "w") as output:
             output.write("{\n")
@@ -171,11 +171,15 @@ class LcImsMsMs(ProteomicsExperiment):
             split_end = split_positions[1:]
             split_data = [ions_in_frames.loc[lambda x: (x["frame_min"] < f_split_max) & (x["frame_max"] >= f_split_min)] for (f_split_min, f_split_max) in zip(split_start,split_end)]
 
-            with Pool(num_processes) as pool:
-                t = pool.starmap(assemble_frame_range,   zip(split_start, split_end, split_data) )
+            if num_processes > 1:
+                with Pool(num_processes) as pool:
+                    results = pool.starmap(assemble_frame_range,   zip(split_start, split_end, split_data) )
+
+            else:
+                results = [assemble_frame_range(split_start[0], split_end[0], split_data[0])]
 
             with open(self.output_file, "a") as output:
-                for output_buffer in t:
+                for output_buffer in results:
                     for frame, frame_signal in output_buffer.items():
                         output.write(f"{frame}: {frame_signal} , \n")
 
