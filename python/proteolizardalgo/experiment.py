@@ -1,4 +1,5 @@
 import os
+import json
 from multiprocessing import Pool
 import functools
 from abc import ABC, abstractmethod
@@ -91,6 +92,7 @@ class LcImsMsMs(ProteomicsExperiment):
             self.database.update(data_chunk)
 
         self.assemble()
+
     @staticmethod
     def _assemble_frame_range(frame_range_start, frame_range_end, ions_in_split, scan_id_min, scan_id_max, default_abundance, resolution):
 
@@ -133,25 +135,27 @@ class LcImsMsMs(ProteomicsExperiment):
         output_buffer = {}
 
         for (f_id,frame_dict) in signal.items():
+            f_id_string = str(f_id)
             frame_signal = {}
             for (s_id,spectra_list) in frame_dict.items():
+                s_id_string = str(s_id)
                 if spectra_list == []:
                     continue
-                frame_signal[s_id] = MzSpectrum(None,f_id, s_id, [], [])
+                frame_signal[s_id_string] = MzSpectrum(None,f_id, s_id, [], [])
                 for (s,r_a) in spectra_list:
-                    frame_signal[s_id] += s*r_a
-                if frame_signal[s_id].is_empty():
-                    del frame_signal[s_id]
+                    frame_signal[s_id_string] += s*r_a
+                if frame_signal[s_id_string].is_empty():
+                    del frame_signal[s_id_string]
                 else:
-                    frame_signal[s_id] = str(frame_signal[s_id].to_resolution(resolution).to_centroided(1, 1/np.power(10,(resolution-1)) ))
-            output_buffer[f_id] = frame_signal
+                    frame_signal[s_id_string] = str(frame_signal[s_id_string].to_resolution(resolution).to_centroided(1, 1/np.power(10,(resolution-1)) ))
+            output_buffer[f_id_string] = frame_signal
 
         return output_buffer
 
 
-    def assemble(self, frame_chunk_size = 120, num_processes = 2):
+    def assemble(self, frame_chunk_size = 120, num_processes = 8):
 
-        with open(self.output_file, "w") as output:
+        with open(self.output_file, "w", encoding="ascii") as output:
             output.write("{\n")
                 # typically for timstof start with 1 and end with 918
         scan_id_min = self.ion_mobility_separation_method.scan_id_min
@@ -178,11 +182,17 @@ class LcImsMsMs(ProteomicsExperiment):
             else:
                 results = [assemble_frame_range(split_start[0], split_end[0], split_data[0])]
 
-            with open(self.output_file, "a") as output:
+            with open(self.output_file, "a", encoding="ascii") as output:
                 for output_buffer in results:
                     for frame, frame_signal in output_buffer.items():
-                        output.write(f"{frame}: {frame_signal} , \n")
+                        frame_signal_jsons = json.dumps(frame_signal)
+                        output.write(f"\"{frame}\":{frame_signal_jsons},\n")
 
+
+        with open(self.output_file, "rb+") as output:
+            # delete last two bytes : ',\n'
+            output.seek(-2,2)
+            output.truncate()
         with open(self.output_file, "a") as output:
             output.write("\n}")
 
