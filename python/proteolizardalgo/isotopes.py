@@ -184,9 +184,6 @@ class AveragineGenerator(IsotopePatternGenerator):
         if amp is None:
             amp = self.default_abundancy
 
-        if not 100 <= mass / charge <= 2000:
-            warnings.warn(f"m/z should be between 100 and 2000, was: {mass / charge}")
-
         lb = mass / charge - .2
         ub = mass / charge + k + .2
 
