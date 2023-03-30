@@ -132,7 +132,7 @@ class LcImsMsMs(ProteomicsExperiment):
         ions_in_split.loc[:,"simulated_mz_spectrum"] = ions_in_split["simulated_mz_spectrum"].transform(lambda s: MzSpectrum.from_jsons(jsons=s))
 
         # construct signal data set
-        signal = {f_id:{s_id:[] for s_id in scan_range} for f_id in frame_range }
+        signal = {f_id:{s_id:MzSpectrum(None,-1,-1,[],[]) for s_id in scan_range} for f_id in frame_range }
 
         for _,row in ions_in_split.iterrows():
 
@@ -157,7 +157,7 @@ class LcImsMsMs(ProteomicsExperiment):
                     abundance = ion_charge_abundance*ion_frame_profile[f_id]*ion_scan_profile[s_id]
                     rel_to_default_abundance = abundance/default_abundance
 
-                    signal[f_id][s_id].append([ion_spectrum,rel_to_default_abundance])
+                    signal[f_id][s_id].push(ion_spectrum*rel_to_default_abundance)
 
         output_dict = {"frame_id" : [],
                        "scan_id" : [],
@@ -165,19 +165,15 @@ class LcImsMsMs(ProteomicsExperiment):
                        "intensity" : [],
         }
         for (f_id,frame_dict) in signal.items():
-            for (s_id,spectra_list) in frame_dict.items():
-                if spectra_list == []:
-                    continue
+            for (s_id,scan_spectrum) in frame_dict.items():
 
-                scan_spectrum = MzSpectrum(None,-1,-1,[],[])
-                for (s,r_a) in spectra_list:
-                     scan_spectrum += s*r_a
                 if not scan_spectrum.is_empty():
                     scan_spectrum = scan_spectrum.to_resolution(resolution).to_centroided(1, 1/np.power(10,(resolution-1)) )
                     output_dict["mz"].append(scan_spectrum.mz().tolist())
                     output_dict["intensity"].append(scan_spectrum.intensity().tolist())
                     output_dict["scan_id"].append(s_id)
                     output_dict["frame_id"].append(f_id)
+                    signal[f_id][s_id] = None
 
         for key, value in output_dict.items():
             output_dict[key] = pa.array(value)
@@ -186,7 +182,7 @@ class LcImsMsMs(ProteomicsExperiment):
 
         pq.write_table(pa_table, output_file_path, compression=None)
 
-    def assemble(self, frames_per_process = 25, num_processes = 1):
+    def assemble(self, frames_per_process = 25, num_processes = 4):
 
         scan_id_min = self.ion_mobility_separation_method.scan_id_min
         scan_id_max = self.ion_mobility_separation_method.scan_id_max
