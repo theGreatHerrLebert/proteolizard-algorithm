@@ -109,15 +109,21 @@ class LcImsMsMs(ProteomicsExperiment):
         self.assemble()
 
     @staticmethod
-    def _assemble_frame_range(frame_range_start, frame_range_end, ions_in_split, scan_id_min, scan_id_max, default_abundance, resolution, output_path):
+    def _assemble_frame_range(frame_range, scan_id_min, scan_id_max, default_abundance, resolution, output_path, database_path):
 
-
+        frame_range_start = frame_range[0]
+        frame_range_end = frame_range[1]
         # generate file_name
         file_name = f"frames_{frame_range_start}_{frame_range_end}.parquet"
         output_file_path = f"{output_path}/{file_name}"
 
         frame_range = range(frame_range_start,frame_range_end)
         scan_range  = range(scan_id_min, scan_id_max+1)
+
+        thread_db_handle = ProteomicsExperimentDatabaseHandle(database_path)
+        ions_in_split = thread_db_handle.load_frames((frame_range_start, frame_range_end), spectra_as_jsons = True)
+
+
         # skip if no peptides in split
         if ions_in_split.shape[0] == 0:
             return {}
@@ -180,31 +186,25 @@ class LcImsMsMs(ProteomicsExperiment):
 
         pq.write_table(pa_table, output_file_path, compression=None)
 
-    def assemble(self, frame_chunk_size = 250, num_processes = 8):
+    def assemble(self, frames_per_process = 25, num_processes = 1):
 
         scan_id_min = self.ion_mobility_separation_method.scan_id_min
         scan_id_max = self.ion_mobility_separation_method.scan_id_max
         default_abundance = self.mz_separation_method.model.default_abundance
         resolution = self.mz_separation_method.resolution
 
-        assemble_frame_range = functools.partial(self._assemble_frame_range, scan_id_min = scan_id_min, scan_id_max = scan_id_max, default_abundance = default_abundance, resolution = resolution, output_path = self.output_path)
+        split_positions = np.arange(0, self.lc_method.num_frames , step=frames_per_process ).astype(int)
+        split_start = split_positions[:-1]
+        split_end = split_positions[1:]
 
-        for f_r in tqdm(range(np.ceil(self.lc_method.num_frames/frame_chunk_size).astype(int))):
-            frame_range_start = f_r*frame_chunk_size
-            frame_range_end = frame_range_start+frame_chunk_size
-            ions_in_frames = self.database.load_frames((frame_range_start, frame_range_end), spectra_as_jsons = True)
+        assemble_frame_range = functools.partial(self._assemble_frame_range, scan_id_min = scan_id_min, scan_id_max = scan_id_max, default_abundance = default_abundance, resolution = resolution, output_path = self.output_path, database_path= self.database_path)
 
-            split_positions = np.linspace(frame_range_start, frame_range_end, num= num_processes+1).astype(int)
-            split_start = split_positions[:num_processes]
-            split_end = split_positions[1:]
-            split_data = [ions_in_frames.loc[lambda x: (x["frame_min"] < f_split_max) & (x["frame_max"] >= f_split_min)] for (f_split_min, f_split_max) in zip(split_start,split_end)]
-
-            if num_processes > 1:
-                with Pool(num_processes) as pool:
-                    pool.starmap(assemble_frame_range,   zip(split_start, split_end, split_data) )
-
-            else:
-                assemble_frame_range(split_start[0], split_end[0], split_data[0])
+        if num_processes > 1:
+            with Pool(num_processes) as pool:
+                list(tqdm(pool.imap(assemble_frame_range, zip(split_start, split_end)),total=len(split_start)))
+        else:
+            for start,end in tqdm(zip(split_start,split_end), total = len(split_start)):
+                assemble_frame_range((start, end))
 
 
 

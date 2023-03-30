@@ -121,8 +121,9 @@ class ProteinSample:
 
 class ProteomicsExperimentDatabaseHandle:
     def __init__(self,path:str):
-        if os.path.exists(path):
-            warnings.warn("Database exists")
+        if not os.path.exists(path):
+            print("Connect to Database")
+
         self.con = sqlite3.connect(path)
         self._chunk_size = None
 
