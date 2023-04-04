@@ -97,7 +97,12 @@ class LcImsMsMs(ProteomicsExperiment):
     def load_sample(self, sample: PeptideDigest):
         return super().load_sample(sample)
 
-    def run(self, chunk_size: int = 1000):
+    def run(self, chunk_size: int = 1000, assemble_processes: int = 8, frames_per_assemble_process:int = 20):
+        self._simulate_features(chunk_size)
+        self._assemble(frames_per_assemble_process, assemble_processes)
+
+
+    def _simulate_features(self, chunk_size):
         # load bulks of data here as dataframe if necessary
         for data_chunk in self.database.load_chunks(chunk_size):
             self.lc_method.run(data_chunk)
@@ -105,9 +110,6 @@ class LcImsMsMs(ProteomicsExperiment):
             self.ion_mobility_separation_method.run(data_chunk)
             self.mz_separation_method.run(data_chunk)
             self.database.update(data_chunk)
-
-        self.assemble()
-
     @staticmethod
     def _assemble_frame_range(frame_range, scan_id_min, scan_id_max, default_abundance, resolution, output_path, database_path):
 
@@ -132,7 +134,7 @@ class LcImsMsMs(ProteomicsExperiment):
         ions_in_split.loc[:,"simulated_mz_spectrum"] = ions_in_split["simulated_mz_spectrum"].transform(lambda s: MzSpectrum.from_jsons(jsons=s))
 
         # construct signal data set
-        signal = {f_id:{s_id:MzSpectrum(None,-1,-1,[],[]) for s_id in scan_range} for f_id in frame_range }
+        signal = {f_id:{s_id:[] for s_id in scan_range} for f_id in frame_range }
 
         for _,row in ions_in_split.iterrows():
 
@@ -157,7 +159,7 @@ class LcImsMsMs(ProteomicsExperiment):
                     abundance = ion_charge_abundance*ion_frame_profile[f_id]*ion_scan_profile[s_id]
                     rel_to_default_abundance = abundance/default_abundance
 
-                    signal[f_id][s_id].push(ion_spectrum*rel_to_default_abundance)
+                    signal[f_id][s_id].append(ion_spectrum*rel_to_default_abundance)
 
         output_dict = {"frame_id" : [],
                        "scan_id" : [],
@@ -165,10 +167,10 @@ class LcImsMsMs(ProteomicsExperiment):
                        "intensity" : [],
         }
         for (f_id,frame_dict) in signal.items():
-            for (s_id,scan_spectrum) in frame_dict.items():
+            for (s_id,scan_spectra_list) in frame_dict.items():
 
-                if not scan_spectrum.is_empty():
-                    scan_spectrum = scan_spectrum.to_resolution(resolution).to_centroided(1, 1/np.power(10,(resolution-1)) )
+                if len(scan_spectra_list) > 0:
+                    scan_spectrum = MzSpectrum.from_mzSpectra_list(scan_spectra_list,resolution = resolution, sigma=1/np.power(10,(resolution-1)))
                     output_dict["mz"].append(scan_spectrum.mz().tolist())
                     output_dict["intensity"].append(scan_spectrum.intensity().tolist())
                     output_dict["scan_id"].append(s_id)
@@ -182,7 +184,7 @@ class LcImsMsMs(ProteomicsExperiment):
 
         pq.write_table(pa_table, output_file_path, compression=None)
 
-    def assemble(self, frames_per_process = 25, num_processes = 4):
+    def _assemble(self, frames_per_process:int, num_processes:int):
 
         scan_id_min = self.ion_mobility_separation_method.scan_id_min
         scan_id_max = self.ion_mobility_separation_method.scan_id_max

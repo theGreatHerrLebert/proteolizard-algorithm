@@ -1,6 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import List, Tuple
+from multiprocessing import Pool
 
 import tensorflow as tf
 import numpy as np
@@ -12,6 +13,7 @@ from proteolizardalgo.chemistry import  STANDARD_TEMPERATURE, STANDARD_PRESSURE,
 from proteolizardalgo.proteome import ProteomicsExperimentSampleSlice
 from proteolizardalgo.feature import RTProfile, ScanProfile, ChargeProfile
 from proteolizardalgo.isotopes import AveragineGenerator
+from proteolizardalgo.utility import tokenizer_from_json
 
 class Device(ABC):
     def __init__(self, name:str):
@@ -227,10 +229,10 @@ class EMGChromatographyProfileModel(ChromatographyProfileModel):
 
 class NeuralChromatographyApex(ChromatographyApexModel):
 
-    def __init__(self, model_path: str, tokenizer: tf.keras.preprocessing.text.Tokenizer):
+    def __init__(self, model_path: str, tokenizer_path: str):
         super().__init__()
-        self.model = tf.keras.models.load_model(model_path)
-        self.tokenizer = tokenizer
+        self.model_path = model_path
+        self.tokenizer = tokenizer_from_json(tokenizer_path)
 
     def sequences_to_tokens(self, sequences: np.array) -> np.array:
         print('tokenizing sequences...')
@@ -239,20 +241,28 @@ class NeuralChromatographyApex(ChromatographyApexModel):
         tokens_padded = tf.keras.preprocessing.sequence.pad_sequences(tokens, 50, padding='post')
         return tokens_padded
 
-    def sequences_tf_dataset(self, sequences: np.array, batched: bool = True, bs: int = 2048) -> tf.data.Dataset:
-        tokens = self.sequences_to_tokens(sequences)
-        print('generating tf dataset...')
-        pseudo_target = np.expand_dims(np.zeros_like(tokens[:, 0]), axis=1)
-
+    @staticmethod
+    def _worker(model_path: str, tokens_padded: np.array, batched: bool = True, bs: int = 2048):
+        pseudo_target = np.expand_dims(np.zeros_like(tokens_padded[:, 0]), axis=1)
         if batched:
-            return tf.data.Dataset.from_tensor_slices((tokens, pseudo_target)).batch(bs)
-        return tf.data.Dataset.from_tensor_slices((tokens, pseudo_target))
+            dataset = tf.data.Dataset.from_tensor_slices((tokens_padded, pseudo_target)).batch(bs)
+        else:
+            dataset = tf.data.Dataset.from_tensor_slices((tokens_padded, pseudo_target))
+        model = tf.keras.models.load_model(model_path)
+        print('predicting irts...')
+        return_val = model.predict(dataset)
+        return return_val
 
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: Chromatography) ->  NDArray[np.float64]:
+
         data = sample.peptides
-        ds = self.sequences_tf_dataset(data['sequence_tokenized'])
-        print('predicting irts...')
-        return self.model.predict(ds)
+        print('generating tf dataset...')
+        tokens_padded = self.sequences_to_tokens(data['sequence_tokenized'])
+
+        with Pool(1) as pool:
+            r = pool.starmap(self._worker, [(self.model_path, tokens_padded)])
+        return r[0]
+
 
 class IonSource(Device):
     def __init__(self, name:str ="IonizationDevice"):
@@ -551,10 +561,10 @@ class IonMobilityProfileModel(Model):
 
 class NeuralIonMobilityApex(IonMobilityApexModel):
 
-    def __init__(self, model_path: str, tokenizer: tf.keras.preprocessing.text.Tokenizer):
+    def __init__(self, model_path: str, tokenizer_path: str):
         super().__init__()
-        self.model = tf.keras.models.load_model(model_path)
-        self.tokenizer = tokenizer
+        self.model_path = model_path
+        self.tokenizer = tokenizer_from_json(tokenizer_path)
 
     def sequences_to_tokens(self, sequences: np.array) -> np.array:
         print('tokenizing sequences...')
@@ -563,29 +573,31 @@ class NeuralIonMobilityApex(IonMobilityApexModel):
         tokens_padded = tf.keras.preprocessing.sequence.pad_sequences(tokens, 50, padding='post')
         return tokens_padded
 
-    def sequences_tf_dataset(self, mz: np.array, charges: np.array, sequences: np.array,
-                             batched: bool = True, bs: int = 2048) -> tf.data.Dataset:
-        tokens = self.sequences_to_tokens(sequences)
+    @staticmethod
+    def _worker(model_path: str, tokens_padded: np.array, mz: np.array, charges: np.array, batched: bool = True, bs: int = 2048):
+
         mz = np.expand_dims(mz, 1)
         c = tf.one_hot(charges - 1, depth=4)
-        print('generating tf dataset...')
-        pseudo_target = np.expand_dims(np.zeros_like(tokens[:, 0]), axis=1)
-
+        pseudo_target = np.expand_dims(np.zeros_like(tokens_padded[:, 0]), axis=1)
         if batched:
-            return tf.data.Dataset.from_tensor_slices(((mz, c, tokens), pseudo_target)).batch(bs)
-        return tf.data.Dataset.from_tensor_slices(((mz, c, tokens), pseudo_target))
+            dataset = tf.data.Dataset.from_tensor_slices(((mz, c, tokens_padded), pseudo_target)).batch(bs)
+        else:
+            dataset = tf.data.Dataset.from_tensor_slices(((mz, c, tokens_padded), pseudo_target))
+
+        print('predicting mobilities...')
+        model = tf.keras.models.load_model(model_path)
+        ccs, _ = model.predict(dataset)
+        return ccs
 
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> Tuple[NDArray]:
         data = sample.ions
-
-        ds = self.sequences_tf_dataset(data['mz'], data['charge'], data['sequence'])
-
+        tokens_padded = self.sequences_to_tokens(data['sequence'])
         mz = data['mz'].values
-
-        print('predicting mobilities...')
-        ccs, _ = self.model.predict(ds)
+        charges = data["charge"].values
+        with Pool(1) as pool:
+            r = pool.starmap(self._worker, [(self.model_path, tokens_padded, mz, charges)])
+            ccs = r[0]
         K0s = device.ccs_to_reduced_im(np.squeeze(ccs), mz, data['charge'].values)
-
         scans = device.reduced_im_to_scan(K0s)
         return K0s,scans
 
