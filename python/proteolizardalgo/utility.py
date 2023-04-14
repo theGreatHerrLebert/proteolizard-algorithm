@@ -367,6 +367,98 @@ def preprocess_max_quant_sequence(s, old_annotation=False):
 
     return ['<START>'] + r_list + ['<END>']
 
+def is_unimod_start(char:str):
+    """
+    Tests if char is start of unimod
+    bracket
+
+    :param char: Character of a proForma formatted aa sequence
+    :type char: str
+    :return: Wether char is start of unimod bracket
+    :rtype: bool
+    """
+    if char in ["(","[","{"]:
+        return True
+    else:
+        return False
+
+def is_unimod_end(char:str):
+    """
+    Tests if char is end of unimod
+    bracket
+
+    :param char: Character of a proForma formatted aa sequence
+    :type char: str
+    :return: Wether char is end of unimod bracket
+    :rtype: bool
+    """
+    if char in [")","]","}"]:
+        return True
+    else:
+        return False
+
+def tokenize_proforma_sequence(sequence: str):
+    """
+    Tokenize a ProForma formatted sequence string.
+
+    :param sequence: Sequence string (ProForma formatted)
+    :type sequence: str
+    :return: List of tokens
+    :rtype: List
+    """
+    sequence = sequence.upper().replace("(","[").replace(")","]")
+    token_list = ["<START>"]
+    in_unimod_bracket = False
+    tmp_token = ""
+
+    for aa in sequence:
+        if is_unimod_start(aa):
+            in_unimod_bracket = True
+        if in_unimod_bracket:
+            if is_unimod_end(aa):
+                in_unimod_bracket = False
+            tmp_token += aa
+            continue
+        if tmp_token != "":
+            token_list.append(tmp_token)
+            tmp_token = ""
+        tmp_token += aa
+
+    if tmp_token != "":
+        token_list.append(tmp_token)
+
+    if len(token_list) > 1:
+        if token_list[1].find("UNIMOD:1") != -1:
+            token_list[1] = "<START>"+token_list[1]
+            token_list = token_list[1:]
+    token_list.append("<END>")
+
+    return token_list
+
+def get_aa_num_proforma_sequence(sequence:str):
+    """
+    get number of amino acids in sequence
+
+    :param sequence: proforma formatted aa sequence
+    :type sequence: str
+    :return: Number of amino acids
+    :rtype: int
+    """
+    num_aa = 0
+    inside_bracket = False
+
+    for aa in sequence:
+        if is_unimod_start(aa):
+            inside_bracket = True
+        if inside_bracket:
+            if is_unimod_end(aa):
+                inside_bracket = False
+            continue
+        num_aa += 1
+    return num_aa
+
+
+
 def tokenizer_to_json(tokenizer: tf.keras.preprocessing.text.Tokenizer, path: str):
     """
     save a fit keras tokenizer to json for later use

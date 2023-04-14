@@ -85,10 +85,6 @@ class ProteomicsExperiment(ABC):
     def run(self):
         pass
 
-    @abstractmethod
-    def assemble(self):
-        pass
-
 
 class LcImsMsMs(ProteomicsExperiment):
     def __init__(self, path:str):

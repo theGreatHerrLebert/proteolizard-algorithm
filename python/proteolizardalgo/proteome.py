@@ -7,7 +7,7 @@ import pandas as pd
 import sqlite3
 from proteolizarddata.data import MzSpectrum
 from proteolizardalgo.feature import RTProfile, ScanProfile, ChargeProfile
-from proteolizardalgo.utility import preprocess_max_quant_sequence, TokenSequence
+from proteolizardalgo.utility import tokenize_proforma_sequence, TokenSequence, get_aa_num_proforma_sequence
 from proteolizardalgo.chemistry import get_mono_isotopic_weight, MASS_PROTON
 from enum import Enum
 from abc import ABC, abstractmethod
@@ -38,27 +38,62 @@ class Trypsin(Enzyme):
         super().__init__(name)
         self.name = name
 
-    def calculate_cleavages(self, sequence):
+    def calculate_cleavages(self, sequence: str):
+        """
+        Scans sequence for cleavage motifs
+        and returns list of tuples of peptide intervals.
 
-        cut_sites = [0]
+        :param sequence: protein sequence to digest
+        :type sequence: str
+        :return: beginning with
+        :rtype: List[Tuple[int,int]]
+        """
+        cut_sites = []
+        start = 0
+        end = 0
+        in_unimod_bracket = False
+        for i,aa in enumerate(sequence[:-1]):
+            # skip unimod brackets
+            if aa == "(":
+                in_unimod_bracket = True
+            if in_unimod_bracket:
+                if aa == ")":
+                    in_unimod_bracket = False
+                continue
 
-        for i in range(len(sequence) - 1):
             # cut after every 'K' or 'R' that is not followed by 'P'
-            if ((sequence[i] == 'K') or (sequence[i] == 'R')) and sequence[i + 1] != 'P':
-                cut_sites += [i + 1]
 
-        cut_sites += [len(sequence)]
+            next_aa = sequence[i+1]
+            if ((aa == 'K') or (aa == 'R')) and next_aa != 'P':
+                end = i+1
+                cut_sites.append((start, end))
+                start = end
+
+        cut_sites.append((start, len(sequence)))
 
         return np.array(cut_sites)
 
     def __repr__(self):
         return f'Enzyme(name: {self.name.name})'
 
-    def digest(self, sequence, abundancy, missed_cleavages=0, min_length=7):
+    def digest(self, sequence:str, abundancy:float, missed_cleavages:int =0, min_length:int =7):
+        """
+        Digests a protein into peptides.
+
+        :param sequence: Sequence of protein in ProForma standard.
+        :type sequence: str
+        :param abundancy: Abundance of protein
+        :type abundancy: float
+        :param missed_cleavages: Number of allowed missed cleavages, defaults to 0
+        :type missed_cleavages: int, optional
+        :param min_length: Min length of recorded peptides, defaults to 7
+        :type min_length: int, optional
+        :return: List of dictionaries with `sequence`,`start`, `end` and `abundance` as keys.
+        :rtype: List[Dict]
+        """
         assert 0 <= missed_cleavages <= 2, f'Number of missed cleavages might be between 0 and 2, was: {missed_cleavages}'
 
-        cut_sites = self.calculate_cleavages(sequence)
-        pairs = np.c_[cut_sites[:-1], cut_sites[1:]]
+        peptide_intervals = self.calculate_cleavages(sequence)
 
         # TODO: implement
         if missed_cleavages == 1:
@@ -68,13 +103,13 @@ class Trypsin(Enzyme):
 
         dig_list = []
 
-        for s, e in pairs:
-            dig_list += [sequence[s: e]]
+        for s, e in peptide_intervals:
+            dig_list.append(sequence[s: e])
 
         # pair sequence digests with indices
-        wi = zip(dig_list, pairs)
+        wi = zip(dig_list, peptide_intervals)
         # filter out short sequences and clean index display
-        wi = map(lambda p: (p[0], p[1][0], p[1][1]), filter(lambda s: len(s[0]) >= min_length, wi))
+        wi = map(lambda p: (p[0], p[1][0], p[1][1]), filter(lambda s: get_aa_num_proforma_sequence(s[0]) >= min_length, wi))
 
         return list(map(lambda e: {'sequence': e[0], 'start': e[1], 'end': e[2], 'abundancy': abundancy}, wi))
 
@@ -96,7 +131,19 @@ class ProteinSample:
         self.name = name
 
     def digest(self, enzyme: Enzyme, missed_cleavages: int = 0, min_length: int = 7) -> PeptideDigest:
+        """
+        Digest all proteins in the sample with `enzyme`
 
+        :param enzyme: Enzyme for digestion e.g. instance of `Trypsin`
+        :type enzyme: Enzyme
+        :param missed_cleavages: Number of allowed missed cleavages, defaults to 0
+        :type missed_cleavages: int, optional
+        :param min_length: Minimum length of peptide to be recorded, defaults to 7
+        :type min_length: int, optional
+        :return: Digested sample
+        :rtype: PeptideDigest
+        """
+        # digest with enzyme row-wise (one protein at a time)
         digest = self.data.apply(lambda r: enzyme.digest(r['sequence'], r['abundancy'], missed_cleavages, min_length), axis=1)
 
         V = zip(self.data['id'].values, digest.values)
@@ -105,13 +152,14 @@ class ProteinSample:
 
         for (gene, peptides) in V:
             for (pep_idx, pep) in enumerate(peptides):
+                # discard sequences with unknown amino acids
                 if pep['sequence'].find('X') == -1:
                     pep['gene_id'] = gene
                     pep['pep_id'] = f"{gene}_{pep_idx}"
-                    pep['sequence'] = '_' + pep['sequence'] + '_'
-                    pep['sequence_tokenized'] = preprocess_max_quant_sequence(pep['sequence'])
+                    pep['sequence_tokenized'] = tokenize_proforma_sequence(pep['sequence'])
                     pep['mass_theoretical'] = get_mono_isotopic_weight(pep['sequence_tokenized'])
                     pep['sequence_tokenized'] = TokenSequence(pep['sequence_tokenized']).jsons
+                    pep['sequence'] = '_' + pep['sequence'] + '_'
                     r_list.append(pep)
 
         return PeptideDigest(pd.DataFrame(r_list), self.name, enzyme.name)

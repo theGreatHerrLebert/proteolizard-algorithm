@@ -10,14 +10,14 @@ AMINO_ACIDS = {'Lysine': 'K', 'Alanine': 'A', 'Glycine': 'G', 'Valine': 'V', 'Ty
 AA_MASSES = {'A': 71.03711, 'C': 103.00919, 'D': 115.02694, 'E': 129.04259, 'F': 147.06841, 'G': 57.02146,
              'H': 137.05891, 'I': 113.08406, 'K': 128.09496, 'L': 113.08406, 'M': 131.04049, 'N': 114.04293,
              'P': 97.05276, 'Q': 128.05858, 'R': 156.10111, 'S': 87.03203, 'T': 101.04768, 'V': 99.06841,
-             'W': 186.07931, 'Y': 163.06333, '<AC>': 42.010565, '<OX>': 15.994915, 'U': 168.964203,
-             '<CM>': 57.021464, '<PH>': 79.966331, '<CY>': 0.0, '<START>': 0.0, '<END>': 0.0}
+             'W': 186.07931, 'Y': 163.06333, '[UNIMOD:1]': 42.010565, '[UNIMOD:35]': 15.994915, 'U': 168.964203,
+             '[UNIMOD:4]': 57.021464, '[UNIMOD:21]': 79.966331, '[UNIMOD:312]': 119.004099, '<START>': 0.0, '<END>': 0.0}
 
-VARIANT_DICT = {'L': ['L'], 'E': ['E'], 'S': ['S', 'S-<PH>'], 'A': ['A'], 'V': ['V'], 'D': ['D'], 'G': ['G'],
-                '<END>': ['<END>'], 'P': ['P'], '<START>': ['<START>', '<START>-<AC>'], 'T': ['T', 'T-<PH>'],
-                'I': ['I'], 'Q': ['Q'], 'K': ['K', 'K-<AC>'], 'N': ['N'], 'R': ['R'], 'F': ['F'], 'H': ['H'],
-                'Y': ['Y', 'Y-<PH>'], 'M': ['M', 'M-<OX>'],
-                'W': ['W'], 'C': ['C', 'C-<CY>', 'C-<CM>'], 'C-<CM>': ['C', 'C-<CY>', 'C-<CM>']}
+VARIANT_DICT = {'L': ['L'], 'E': ['E'], 'S': ['S', 'S[UNIMOD:21]'], 'A': ['A'], 'V': ['V'], 'D': ['D'], 'G': ['G'],
+                '<END>': ['<END>'], 'P': ['P'], '<START>': ['<START>', '<START>[UNIMOD:1]'], 'T': ['T', 'T[UNIMOD:21]'],
+                'I': ['I'], 'Q': ['Q'], 'K': ['K', 'K[UNIMOD:1]'], 'N': ['N'], 'R': ['R'], 'F': ['F'], 'H': ['H'],
+                'Y': ['Y', 'Y[UNIMOD:21]'], 'M': ['M', 'M[UNIMOD:35]'],
+                'W': ['W'], 'C': ['C', 'C[UNIMOD:312]', 'C[UNIMOD:4]'], 'C[UNIMOD:4]': ['C', 'C[UNIMOD:312]', 'C[UNIMOD:4]']}
 
 MASS_PROTON = 1.007276466583
 
@@ -38,10 +38,30 @@ K_BOLTZMANN = 1.380649e-23
 # TODO CITATION
 CCS_K0_CONVERSION_CONSTANT = 18509.8632163405
 
+def get_monoisotopic_token_weight(token:str):
+    """
+    Gets monoisotopic weight of token
+
+    :param token: Token of aa sequence e.g. "<START>[UNIMOD:1]"
+    :type token: str
+    :return: Weight in Dalton.
+    :rtype: float
+    """
+    splits = token.split("[")
+    for i in range(1, len(splits)):
+        splits[i] = "["+splits[i]
+
+    mass = 0
+    for split in splits:
+        mass += AA_MASSES[split]
+    return mass
+
 
 def get_mono_isotopic_weight(sequence_tokenized: list[str]) -> float:
-    flat_seq = [char for sublist in [c.split('-') for c in sequence_tokenized] for char in sublist]
-    return sum(map(lambda c: AA_MASSES[c], flat_seq)) + MASS_WATER
+    mass = 0
+    for token in sequence_tokenized:
+        mass += get_monoisotopic_token_weight(token)
+    return mass + MASS_WATER
 
 
 def get_mass_over_charge(mass: float, charge: int) -> float:
