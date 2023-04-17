@@ -16,7 +16,7 @@ from proteolizardalgo.hashing import ReferencePattern
 
 class TokenSequence:
 
-    def __init__(self, sequence_tokenized: List[str], jsons:Optional[str] = None):
+    def __init__(self, sequence_tokenized: Optional[List[str]] = None, jsons:Optional[str] = None):
         if jsons is not None:
             self.sequence_tokenized = self._from_jsons(jsons)
             self._jsons = jsons

@@ -234,10 +234,9 @@ class NeuralChromatographyApex(ChromatographyApexModel):
         self.model_path = model_path
         self.tokenizer = tokenizer_from_json(tokenizer_path)
 
-    def sequences_to_tokens(self, sequences: np.array) -> np.array:
+    def sequences_to_tokens(self, sequences_tokenized: np.array) -> np.array:
         print('tokenizing sequences...')
-        seq_lists = [list(s) for s in sequences]
-        tokens = self.tokenizer.texts_to_sequences(seq_lists)
+        tokens = np.apply_along_axis(self.tokenizer.texts_to_sequences, 0, sequences_tokenized)
         tokens_padded = tf.keras.preprocessing.sequence.pad_sequences(tokens, 50, padding='post')
         return tokens_padded
 
@@ -256,8 +255,9 @@ class NeuralChromatographyApex(ChromatographyApexModel):
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: Chromatography) ->  NDArray[np.float64]:
 
         data = sample.peptides
+        tokens = data["sequence_tokenized"].apply(lambda st: st.sequence_tokenized)
         print('generating tf dataset...')
-        tokens_padded = self.sequences_to_tokens(data['sequence_tokenized'])
+        tokens_padded = self.sequences_to_tokens(tokens)
 
         with Pool(1) as pool:
             r = pool.starmap(self._worker, [(self.model_path, tokens_padded)])
@@ -566,10 +566,9 @@ class NeuralIonMobilityApex(IonMobilityApexModel):
         self.model_path = model_path
         self.tokenizer = tokenizer_from_json(tokenizer_path)
 
-    def sequences_to_tokens(self, sequences: np.array) -> np.array:
+    def sequences_to_tokens(self, sequences_tokenized: np.array) -> np.array:
         print('tokenizing sequences...')
-        seq_lists = [list(s) for s in sequences]
-        tokens = self.tokenizer.texts_to_sequences(seq_lists)
+        tokens = np.apply_along_axis(self.tokenizer.texts_to_sequences, 0, sequences_tokenized)
         tokens_padded = tf.keras.preprocessing.sequence.pad_sequences(tokens, 50, padding='post')
         return tokens_padded
 
@@ -591,7 +590,8 @@ class NeuralIonMobilityApex(IonMobilityApexModel):
 
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> Tuple[NDArray]:
         data = sample.ions
-        tokens_padded = self.sequences_to_tokens(data['sequence'])
+        tokens = sample.peptides.sequence_tokenized.apply(lambda st: st.sequence_tokenized)
+        tokens_padded = self.sequences_to_tokens(tokens)
         mz = data['mz'].values
         charges = data["charge"].values
         with Pool(1) as pool:

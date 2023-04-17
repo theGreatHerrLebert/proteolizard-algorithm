@@ -158,7 +158,7 @@ class ProteinSample:
                     pep['pep_id'] = f"{gene}_{pep_idx}"
                     pep['sequence_tokenized'] = tokenize_proforma_sequence(pep['sequence'])
                     pep['mass_theoretical'] = get_mono_isotopic_weight(pep['sequence_tokenized'])
-                    pep['sequence_tokenized'] = TokenSequence(pep['sequence_tokenized']).jsons
+                    pep['sequence_tokenized'] = TokenSequence(pep['sequence_tokenized'])
                     pep['sequence'] = '_' + pep['sequence'] + '_'
                     r_list.append(pep)
 
@@ -178,7 +178,7 @@ class ProteomicsExperimentDatabaseHandle:
     def push(self, table_name:str, data:PeptideDigest):
         if table_name == "PeptideDigest":
             assert isinstance(data, PeptideDigest), "For pushing to table 'PeptideDigest' data type must be `PeptideDigest`"
-            df = data.data
+            df = data.data.apply(self.make_sql_compatible)
         else:
             raise ValueError("This Table does not exist and is not supported")
 
@@ -201,6 +201,7 @@ class ProteomicsExperimentDatabaseHandle:
             query = "SELECT * FROM PeptideDigest"
         self.__chunk_generator =  pd.read_sql(query,self.con, chunksize=chunk_size, index_col="index")
         for chunk in self.__chunk_generator:
+            chunk.loc[:,"sequence_tokenized"] = chunk.loc[:,"sequence_tokenized"].transform(lambda st: TokenSequence(None, jsons=st))
             yield(ProteomicsExperimentSampleSlice(peptides = chunk))
 
     def load_frames(self, frame_range:Tuple[int,int], spectra_as_jsons = False):
@@ -241,7 +242,7 @@ class ProteomicsExperimentDatabaseHandle:
     def make_sql_compatible(column):
         if column.size < 1:
             return
-        if isinstance(column.iloc[0], (RTProfile,ScanProfile,ChargeProfile)):
+        if isinstance(column.iloc[0], (RTProfile, ScanProfile, ChargeProfile, TokenSequence)):
             return column.apply(lambda x: x.jsons)
         elif isinstance(column.iloc[0], MzSpectrum):
             return column.apply(lambda x: x.to_jsons(only_spectrum = True))
