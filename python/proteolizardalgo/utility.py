@@ -297,6 +297,31 @@ def preprocess_max_quant_evidence(exp: pd.DataFrame) -> pd.DataFrame:
 
     return exp
 
+def max_quant_to_proforma(s:str, old_annotation:bool=False):
+    """
+    Convert MaxQuant amino acid sequences (with PTM) to
+    proForma format.
+
+    :param s: amino acid sequence
+    :type s: str
+    :param old_annotation: Wether old annotation is used in `s`, defaults to False
+    :type old_annotation: bool, optional
+    """
+    seq = s.strip("_")
+
+    proforma_seq = ""
+    if old_annotation:
+        proforma_seq = (seq
+                        .replace("(ox)", "[UNIMOD:35]")
+                        .replace("(ac)", "[UNIMOD:1]")
+        )
+    else:
+        proforma_seq = (seq
+                        .replace("(Oxidation (M))", "[UNIMOD:35]")
+                        .replace("(Phospho (STY))", "[UNIMOD:21]")
+                        .replace("(Acetyl (Protein N-term))", "[UNIMOD:1]")
+                        )
+    return f"_{proforma_seq}_"
 
 def preprocess_max_quant_sequence(s, old_annotation=False):
     """
