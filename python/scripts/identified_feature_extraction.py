@@ -69,7 +69,7 @@ def preprocess_mq_dataframe(evidence_df: pd.DataFrame, data_handle: PyTimsDataHa
                                 Im_index_stop = lambda df_: np.ceil(df_["Ion mobility index"]+df_["Ion mobility length"]/2).astype(int),
                                 Mz_start = lambda df_: df_["Mz_experiment"]-margin_mz_low,
                                 Mz_stop = lambda df_: df_["Mz_experiment"]+(df_["Num_peaks"]-1)/df_["Charge"]+margin_mz_high,
-                                Frame_apex = lambda df_: df_["Retention time"].apply(lambda _rt: data_handle.rt_to_closest_frame_id(_rt))
+                                Frame_apex = lambda df_: df_["Retention_time_sec"].apply(lambda _rt: data_handle.rt_to_closest_frame_id(_rt))
                                 )
     )
 
@@ -117,7 +117,8 @@ def get_raw_data_maxquant(evidence_df: pd.DataFrame, data_handle: PyTimsDataHand
                      "mzs",
                      "scans",
                      "frames",
-                     "Isotope_intensities"]
+                     "Isotope_intensities",
+                     "Raw file"]
                   ].rename({
                             "m/z":"Calibrated_mz",
                             "Number of isotopic peaks":"Num_peaks_MQ",
