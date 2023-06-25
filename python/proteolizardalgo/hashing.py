@@ -118,7 +118,7 @@ class TimsHasher:
         f = pd.concat([non_overlapping,
                        overlapping]).drop_duplicates(['scan', 'mz'])[['frame', 'scan', 'mz', 'intensity']]
 
-        filtered_frame = TimsFrame(None, f['frame'].values[0], f.scan.values, f.mz.values,
+        filtered_frame = TimsFrame(None, f['frame'].values[0], -1., f.scan.values, f.mz.values,
                                    f.intensity.values,
                                    np.zeros_like(f.mz.values).astype(np.int32),
                                    np.zeros_like(f.mz.values).astype(np.float32))
