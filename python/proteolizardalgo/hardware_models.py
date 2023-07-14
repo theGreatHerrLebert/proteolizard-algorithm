@@ -7,9 +7,9 @@ import tensorflow as tf
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 import pandas as pd
-from scipy.stats import exponnorm, norm
+from scipy.stats import exponnorm, norm, binom, gamma
 
-from proteolizardalgo.chemistry import  STANDARD_TEMPERATURE, STANDARD_PRESSURE, CCS_K0_CONVERSION_CONSTANT, BufferGas
+from proteolizardalgo.chemistry import  STANDARD_TEMPERATURE, STANDARD_PRESSURE, CCS_K0_CONVERSION_CONSTANT, BufferGas, get_num_protonizable_sites
 from proteolizardalgo.proteome import ProteomicsExperimentSampleSlice
 from proteolizardalgo.feature import RTProfile, ScanProfile, ChargeProfile
 from proteolizardalgo.isotopes import AveragineGenerator
@@ -225,6 +225,37 @@ class EMGChromatographyProfileModel(ChromatographyProfileModel):
         return profile_list
 
 
+class NormalChromatographyProfileModel(ChromatographyProfileModel):
+
+    def __init__(self):
+        super().__init__()
+
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: Chromatography) -> List[RTProfile]:
+        mus = sample.peptides["simulated_irt_apex"].values
+        sigmas = gamma(a=4.929,scale=1/18.783).rvs(mus.size)/6
+        profile_list = []
+
+        for mu,σ in zip(mus,sigmas):
+
+            μ = device.irt_to_rt(mu)
+            model_params = { "sigma":σ,
+                             "mu":μ,
+                             "name":"Normal"
+                            }
+
+            normal = norm(loc=μ, scale=σ)
+            # start and end value (in retention times)
+            s_rt, e_rt = normal.ppf([0.02,0.98])
+            # as frames
+            s_frame, e_frame = device.rt_to_frame_id(s_rt), device.rt_to_frame_id(e_rt)
+
+            profile_frames = np.arange(s_frame-1,e_frame+1) # starting with s_frame-1 for cdf interval calculation
+            profile_rt_ends = device.frame_time_end(profile_frames)
+            profile_rt_cdfs = normal.cdf(profile_rt_ends)
+            profile_rel_intensities = np.diff(profile_rt_cdfs)
+
+            profile_list.append(RTProfile(profile_frames[1:],profile_rel_intensities,model_params))
+        return profile_list
 
 
 class NeuralChromatographyApex(ChromatographyApexModel):
@@ -308,7 +339,7 @@ class RandomIonSource(IonizationModel):
         return self._allowed_charges
 
     @allowed_charges.setter
-    def allowed_charge(self, charges: ArrayLike):
+    def allowed_charges(self, charges: ArrayLike):
         self._allowed_charges = np.asarray(charges, dtype=np.int8)
 
     @property
@@ -329,6 +360,39 @@ class RandomIonSource(IonizationModel):
         charge_profiles = []
         for c,i in zip(charge, rel_intensity):
             charge_profiles.append(ChargeProfile([c],[i],model_params={"name":"RandomIonSource"}))
+        return charge_profiles
+
+class BinomialIonSource():
+    def __init__(self):
+        super().__init__()
+        self._charged_probability =  0.5
+        self._allowed_charges =  np.array([1, 2, 3, 4], dtype=np.int8)
+
+    @property
+    def allowed_charges(self):
+        return self._allowed_charges
+
+    @allowed_charges.setter
+    def allowed_charges(self, charges: ArrayLike):
+        self._allowed_charges = np.asarray(charges, dtype=np.int8)
+
+    @property
+    def charged_probability(self):
+        return self._charged_probability
+
+    @charged_probability.setter
+    def charged_probability(self, probability: float):
+        self._charged_probability = probability
+
+    def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonSource) -> List[ChargeProfile]:
+        sequences = sample.peptides.sequence
+        vec_get_num_protonizable_sites = np.vectorize(get_num_protonizable_sites)
+        basic_aa_nums = vec_get_num_protonizable_sites(sequences)
+
+        charge_profiles = []
+        for baa_num in basic_aa_nums:
+            rel_intensities = binom(baa_num,self.charged_probability).pmf(self.allowed_charges)
+            charge_profiles.append(ChargeProfile(self.allowed_charges,rel_intensities,model_params={"name":"BinomialIonSource","basic_aa_num":baa_num}))
         return charge_profiles
 
 class IonMobilitySeparation(Device):
@@ -589,8 +653,8 @@ class NeuralIonMobilityApex(IonMobilityApexModel):
         return ccs
 
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> Tuple[NDArray]:
-        data = sample.ions
-        tokens = sample.peptides.sequence_tokenized.apply(lambda st: st.sequence_tokenized)
+        data = sample.ions.merge(sample.peptides.loc[:,["pep_id","sequence_tokenized"]],on="pep_id",validate="many_to_one")
+        tokens = data.sequence_tokenized.apply(lambda st: st.sequence_tokenized)
         tokens_padded = self.sequences_to_tokens(tokens)
         mz = data['mz'].values
         charges = data["charge"].values
@@ -606,10 +670,10 @@ class NormalIonMobilityProfileModel(IonMobilityProfileModel):
         super().__init__()
 
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: IonMobilitySeparation) -> List[ScanProfile]:
-        mus = sample.ions["simulated_k0"].values
+        mus = 1/sample.ions["simulated_k0"].values #1 over k0
+        sigmas = gamma(a=3.703,scale=1/79.614).rvs(mus.size)/6
         profile_list = []
-        for μ in mus:
-            σ = 0.01 # must be sampled
+        for μ,σ in zip(mus,sigmas):
 
             model_params = { "sigma":σ,
                              "mu":μ,
@@ -618,13 +682,13 @@ class NormalIonMobilityProfileModel(IonMobilityProfileModel):
 
             normal = norm(loc=μ, scale=σ)
             # start and end value (k0)
-            s_im, e_im = normal.ppf([0.01,0.99])
+            s_one_over_k0, e_one_over_k0 = normal.ppf([0.01,0.99])
             # as scan ids, remember first scans elutes largest ions
-            s_scan, e_scan = device.reduced_im_to_scan(s_im), device.reduced_im_to_scan(e_im)
+            e_scan, s_scan = device.reduced_im_to_scan(1/s_one_over_k0), device.reduced_im_to_scan(1/e_one_over_k0)
 
             profile_scans = np.arange(s_scan-1,e_scan+1) # starting s_scan-1 is necessary here to include its end value for cdf interval
-            profile_end_im = device.scan_im_upper(profile_scans)
-            profile_end_cdfs = normal.cdf(profile_end_im)
+            profile_end_im = 1/device.scan_im_upper(profile_scans)
+            profile_end_cdfs = 1-normal.cdf(profile_end_im)
             profile_rel_intensities = np.diff(profile_end_cdfs)
 
             profile_list.append(ScanProfile(profile_scans[1:],profile_rel_intensities,model_params))

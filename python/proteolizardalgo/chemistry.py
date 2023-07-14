@@ -67,6 +67,22 @@ def get_mono_isotopic_weight(sequence_tokenized: list[str]) -> float:
 def get_mass_over_charge(mass: float, charge: int) -> float:
     return (mass / charge) + MASS_PROTON
 
+def get_num_protonizable_sites(sequence: str) -> int:
+    """
+    Gets number of sites that can be protonized.
+    This function does not yet account for PTMs.
+
+    :param sequence: Amino acid sequence
+    :type sequence: str
+    :return: Number of protonizable sites
+    :rtype: int
+    """
+    sites = 1 # n-terminus
+    for s in sequence:
+        if s in ["H","R","K"]:
+            sites += 1
+    return sites
+
 
 def reduced_mobility_to_ccs(one_over_k0, mz, charge, mass_gas=28.013, temp=31.85, t_diff=273.15):
     """

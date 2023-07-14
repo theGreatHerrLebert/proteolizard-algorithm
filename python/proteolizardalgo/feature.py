@@ -82,7 +82,9 @@ class ScanProfile(Profile):
 
 class ChargeProfile(Profile):
     def __init__(self,charges:Optional[ArrayLike] = None, rel_abundancies:Optional[ArrayLike] = None, model_params: Optional[Dict] = None, jsons:Optional[str] = None):
-        super().__init__(charges, rel_abundancies, model_params, jsons)
+        abundant_charges = charges[rel_abundancies>0]
+        relative_abundancies_over_0 = rel_abundancies[rel_abundancies>0]
+        super().__init__(abundant_charges, relative_abundancies_over_0, model_params, jsons)
 
     @property
     def charges(self):

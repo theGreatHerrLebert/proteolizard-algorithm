@@ -9,6 +9,7 @@ from scipy.signal import argrelextrema
 from proteolizarddata.data import MzSpectrum
 from proteolizardalgo.utility import gaussian, exp_gaussian, normal_pdf
 import numba
+import pyopenms
 
 from proteolizardalgo.noise import detection_noise
 
@@ -52,6 +53,26 @@ def weight(mass: float, peak_nums: ArrayLike, normalize: bool = True):
         norm = weights.sum()
     return weights/norm
 
+def get_pyopenms_weights(sequence: str, peak_nums: ArrayLike, generator: pyopenms.CoarseIsotopePatternGenerator):
+    """
+    Gets hypothetical intensities of isotopic peaks.
+
+    :param sequence: Peptide sequence in proForma format.
+    :type sequence: str
+    :param generator: pyopenms generator for isotopic pattern calculation
+    :type generator: pyopenms.CoarseIsotopePatternGenerator
+    :return: List of isotopic peak intensities
+    :rtype: List
+    """
+
+    n = peak_nums.shape[0]
+    generator.setMaxIsotope(n)
+    aa_sequence = sequence.strip("_")
+    peptide= pyopenms.AASequence().fromString(aa_sequence.replace("[","(").replace("]",")"))
+    formula = peptide.getFormula()
+    distribution = generator.run(formula)
+    intensities = [i.getIntensity() for i in distribution.getContainer()]
+    return intensities
 
 @numba.jit(nopython=True)
 def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: int, step_size:float, add_detection_noise: bool = False, mass_neutron: float = MASS_NEUTRON):
