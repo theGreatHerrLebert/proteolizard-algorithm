@@ -232,7 +232,7 @@ class NormalChromatographyProfileModel(ChromatographyProfileModel):
 
     def simulate(self, sample: ProteomicsExperimentSampleSlice, device: Chromatography) -> List[RTProfile]:
         mus = sample.peptides["simulated_irt_apex"].values
-        sigmas = gamma(a=4.929,scale=1/18.783).rvs(mus.size)/6
+        sigmas = gamma(a=4.929,scale=1/18.784).rvs(mus.size)/6
         profile_list = []
 
         for mu,σ in zip(mus,sigmas):

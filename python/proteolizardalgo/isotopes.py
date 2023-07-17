@@ -13,8 +13,8 @@ import pyopenms
 
 from proteolizardalgo.noise import detection_noise
 
-MASS_PROTON = 1.007276466583
-MASS_NEUTRON = 1.008664916
+MASS_PROTON = 1.007276466621
+MASS_NEUTRON = 1.00866491595
 
 
 @numba.jit(nopython=True)
