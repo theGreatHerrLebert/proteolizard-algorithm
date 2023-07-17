@@ -13,3 +13,4 @@ setuptools>=58.1.0
 numba~=0.55.1
 hdbscan~=0.8.28
 matplotlib~=3.5.1
+mendeleev~=0.12.1

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional, Tuple
-
+import warnings
 import numpy as np
 from numpy.typing import ArrayLike
 from abc import ABC, abstractmethod
@@ -9,11 +9,12 @@ from scipy.signal import argrelextrema
 from proteolizarddata.data import MzSpectrum
 from proteolizardalgo.utility import gaussian, exp_gaussian, normal_pdf
 import numba
+import pyopenms
 
 from proteolizardalgo.noise import detection_noise
 
-MASS_PROTON = 1.007276466583
-MASS_NEUTRON = 1.008664916
+MASS_PROTON = 1.007276466621
+MASS_NEUTRON = 1.00866491595
 
 
 @numba.jit(nopython=True)
@@ -52,6 +53,26 @@ def weight(mass: float, peak_nums: ArrayLike, normalize: bool = True):
         norm = weights.sum()
     return weights/norm
 
+def get_pyopenms_weights(sequence: str, peak_nums: ArrayLike, generator: pyopenms.CoarseIsotopePatternGenerator):
+    """
+    Gets hypothetical intensities of isotopic peaks.
+
+    :param sequence: Peptide sequence in proForma format.
+    :type sequence: str
+    :param generator: pyopenms generator for isotopic pattern calculation
+    :type generator: pyopenms.CoarseIsotopePatternGenerator
+    :return: List of isotopic peak intensities
+    :rtype: List
+    """
+
+    n = peak_nums.shape[0]
+    generator.setMaxIsotope(n)
+    aa_sequence = sequence.strip("_")
+    peptide= pyopenms.AASequence().fromString(aa_sequence.replace("[","(").replace("]",")"))
+    formula = peptide.getFormula()
+    distribution = generator.run(formula)
+    intensities = [i.getIntensity() for i in distribution.getContainer()]
+    return intensities
 
 @numba.jit(nopython=True)
 def iso(x: ArrayLike, mass: float, charge: float, sigma: float, amp: float, K: int, step_size:float, add_detection_noise: bool = False, mass_neutron: float = MASS_NEUTRON):
@@ -172,16 +193,17 @@ class IsotopePatternGenerator(ABC):
 class AveragineGenerator(IsotopePatternGenerator):
     def __init__(self):
         super().__init__()
+        self.default_abundancy = 1e4
 
     def generate_pattern(self, mass: float, charge: int, k: int = 7,
-                         amp: float = 1e4, resolution: float = 3,
+                         amp: Optional[float] = None, resolution: float = 3,
                          min_intensity: int = 5) -> Tuple[ArrayLike, ArrayLike]:
         pass
 
     def generate_spectrum(self, mass: int, charge: int, frame_id: int, scan_id: int, k: int = 7,
-                          amp :float = 1e4, resolution:float =3, min_intensity: int = 5, centroided: bool = True) -> MzSpectrum:
-
-        assert 100 <= mass / charge <= 2000, f"m/z should be between 100 and 2000, was: {mass / charge}"
+                          amp :Optional[float] = None, resolution:float =3, min_intensity: int = 5, centroided: bool = True) -> MzSpectrum:
+        if amp is None:
+            amp = self.default_abundancy
 
         lb = mass / charge - .2
         ub = mass / charge + k + .2
